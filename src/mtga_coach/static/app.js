@@ -57,7 +57,7 @@ const state = {
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
-  live: null, liveTimer: null, liveStamp: '', grades: {}, gradeSet: '', handle: '',
+  live: null, liveTimer: null, liveStamp: '', liveAll: false, grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -1365,11 +1365,17 @@ function renderLive(panel, live) {
   if (!live.live || !live.playing) { panel.hidden = true; return; }
   panel.hidden = false;
   panel.replaceChildren();
+
   const head = element('div', 'live-head');
   head.append(element('span', 'live-badge on', 'PLAYING'));
-  const lives = (live.players ?? []).map((player) => `${player.is_self ? 'you' : 'them'} ${player.life}`).join(' · ');
-  head.append(element('strong', null, `${live.deck_label || 'Composition'} · turn ${live.turn ?? '—'}`));
-  head.append(element('span', null, `${listText([live.phase, live.step])}${lives ? ` · ${lives}` : ''}`));
+  head.append(element('strong', null, `Turn ${live.turn ?? '—'}`));
+  head.append(element('span', 'live-phase', listText([live.phase, live.step])));
+  (live.players ?? []).forEach((player) => {
+    const life = element('span', `live-life${player.is_self ? ' mine' : ''}`, String(player.life ?? '?'));
+    life.title = player.is_self ? 'your life' : "the opponent's life";
+    head.append(life);
+  });
+  head.append(element('span', 'live-deck', live.deck_label || 'Composition'));
   panel.append(head);
 
   const library = live.library ?? {};
@@ -1377,18 +1383,48 @@ function renderLive(panel, live) {
     panel.append(element('p', 'subtle', library.reason || 'The library cannot be counted for this game.'));
     return;
   }
-  panel.append(element('p', null,
-    `${library.size} cards left · ${library.lands} lands (${percent(library.land_ratio)})`
-    + (library.matches_report ? '' : ' · disagrees with the count the log reports')));
-  const list = element('div', 'live-list');
-  (library.entries ?? []).slice(0, 14).forEach((entry) => {
-    const row = element('div', 'live-row');
-    row.append(element('strong', null, `${entry.quantity}× ${entry.name}`));
-    row.append(element('span', null, `${percent(entry.next_draw)} next`));
-    row.append(element('small', null, `${percent(entry.within_three)} in three`));
-    list.append(row);
+
+  // The land ratio is the number a player is actually deciding on when they look at all:
+  // whether to keep the land, whether to play around a flood. It gets its own line.
+  const body = element('div', 'live-body');
+  const lands = element('div', 'live-lands');
+  const ratio = library.land_ratio ?? 0;
+  const bar = element('div', 'live-bar');
+  const fill = element('div', 'live-bar-fill');
+  fill.style.width = `${Math.round(ratio * 100)}%`;
+  bar.append(fill);
+  lands.append(element('strong', null, `${library.lands} lands in ${library.size}`),
+               bar,
+               element('span', null, `${percent(ratio)} of the next card`));
+  if (!library.matches_report) {
+    lands.append(element('span', 'gap', 'disagrees with the count the log reports'));
+  }
+  body.append(lands);
+
+  const entries = library.entries ?? [];
+  const grid = element('div', 'live-grid');
+  grid.append(element('span', 'live-col', 'card'),
+              element('span', 'live-col right', 'next'),
+              element('span', 'live-col right', 'in three'));
+  const shown = state.liveAll ? entries : entries.slice(0, 8);
+  shown.forEach((entry) => {
+    const card = state.cards[entry.card_id];
+    const name = element('span', `live-name${entry.is_land ? ' land' : ''}`, `${entry.quantity}× ${entry.name}`);
+    if (card?.mana_cost) name.title = card.mana_cost;
+    grid.append(name,
+                element('span', 'live-odds right', percent(entry.next_draw)),
+                element('span', 'live-odds soft right', percent(entry.within_three)));
   });
-  panel.append(list);
+  body.append(grid);
+  panel.append(body);
+
+  if (entries.length > 8) {
+    const more = element('button', 'text-button live-more', state.liveAll
+      ? 'Show the top eight' : `Show the other ${entries.length - 8}`);
+    more.type = 'button';
+    more.addEventListener('click', () => { state.liveAll = !state.liveAll; renderLive(panel, live); });
+    panel.append(more);
+  }
   panel.append(element('small', null, live.note));
 }
 

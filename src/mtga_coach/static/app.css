@@ -338,14 +338,34 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .economy-cell small { color: var(--muted); display: block; font-size: .7rem; }
 .economy-cell .mine-label { color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }
 
-.live-panel { background: linear-gradient(120deg, rgba(45,160,110,.10), transparent 60%); border-left: 3px solid var(--jade); margin-bottom: 1.4rem; padding: .9rem 1.1rem; }
+.live-panel { background: linear-gradient(120deg, rgba(45,160,110,.12), transparent 62%); border-left: 3px solid var(--jade); margin-bottom: 1.2rem; padding: .8rem 1.1rem 1rem; }
 .live-panel[hidden] { display: none !important; }
-.live-head { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .5rem; }
-.live-head span:last-child { color: var(--muted); font-size: .82rem; }
-.live-list { display: grid; gap: .3rem .8rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); margin: .6rem 0; }
-.live-row { align-items: baseline; display: flex; gap: .5rem; justify-content: space-between; }
-.live-row span { color: var(--jade); font-size: .78rem; }
-.live-row small { color: var(--muted); font-size: .72rem; }
+.live-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: .55rem; }
+.live-head strong { font-size: 1.05rem; }
+.live-phase { color: var(--muted); font-size: .8rem; }
+.live-life { border: 1px solid rgba(255,255,255,.14); border-radius: 2px; font-size: .8rem; padding: .05rem .4rem; }
+.live-life.mine { border-color: var(--jade); color: var(--jade); }
+.live-deck { color: var(--muted); font-size: .78rem; margin-left: auto; }
+/* The panel is read at a glance mid-turn, so the name and its number have to sit close
+   together however wide the window is. Letting the grid stretch put half a screen between
+   "7x Mountain" and "23.3%", which is a table nobody can scan. */
+.live-body { max-width: 34rem; }
+.live-lands { align-items: center; display: grid; gap: .6rem; grid-template-columns: auto minmax(80px, 1fr) auto; margin: .7rem 0 .5rem; }
+.live-lands strong { font-size: .88rem; white-space: nowrap; }
+.live-lands span { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.live-bar { background: rgba(255,255,255,.08); height: 4px; }
+.live-bar-fill { background: var(--jade); height: 100%; }
+/* Three fixed columns: the eye reads a percentage by scanning down, never across. */
+.live-grid { column-gap: 1.2rem; display: grid; grid-template-columns: 1fr 4.2rem 4.6rem; row-gap: .12rem; }
+.live-col { border-bottom: 1px solid rgba(255,255,255,.09); color: var(--muted); font-size: .66rem; letter-spacing: .1em; padding-bottom: .2rem; text-transform: uppercase; }
+.right { text-align: right; }
+.live-name { font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-name.land { color: var(--gold); }
+.live-odds { font-size: .84rem; font-variant-numeric: tabular-nums; }
+.live-odds.soft { color: var(--muted); }
+.live-more { display: block; margin: .5rem 0 .2rem; }
+.live-panel > small { color: var(--muted); display: block; max-width: 44rem; }
+
 .grade-list { display: grid; gap: .35rem; margin: .7rem 0; }
 .grade-row { align-items: center; display: grid; gap: .5rem; grid-template-columns: minmax(140px, 1fr) 74px minmax(160px, 2fr); }
 .grade-row.graded { border-left: 2px solid var(--gold); padding-left: .4rem; }
