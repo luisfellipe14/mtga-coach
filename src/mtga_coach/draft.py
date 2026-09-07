@@ -14,6 +14,7 @@ Everything a shape-based reader cannot place is recorded as a key signature (nam
 no values) so an unfamiliar dialect can be read off the diagnostics instead of guessed at.
 """
 
+import hashlib
 import json
 from collections import Counter
 from datetime import datetime, timezone
@@ -108,6 +109,13 @@ def _first(value, keys):
     return None, None
 
 
+def _looks_first(value):
+    """Is this the opening pack of a draft, in whichever base the client counts?"""
+    _, pack = _first(value, PACK_NUMBER_KEYS)
+    _, pick = _first(value, PICK_NUMBER_KEYS)
+    return _number(pack) in (0, 1) and _number(pick) in (0, 1)
+
+
 def _number(value):
     try:
         return int(value)
@@ -150,6 +158,7 @@ class DraftTracker:
     """The state of the draft currently being drafted, rebuilt from the log as it grows."""
 
     def __init__(self):
+        self.origin = ""
         self.raw = []
         self.raw_bytes = 0
         self.raw_dropped = 0
@@ -182,9 +191,24 @@ class DraftTracker:
         pick = None if self.pick_number is None else self.pick_number + shift
         return pack, pick
 
+    @property
+    def identity(self):
+        """A name for this draft, whether or not the client gave it one.
+
+        The bot draft writes no id of any kind: the record is the event name, the pack and
+        the pool. So the identity is derived from the first pack dealt, which is unique to
+        this draft and — unlike a timestamp — is the same value every time the same log is
+        read again, which is what stops a re-read from filing a second copy.
+        """
+        if self.draft_id:
+            return self.draft_id
+        if not self.origin:
+            return ""
+        return f"{self.event_name or 'draft'}-{self.origin}"
+
     def state(self):
         pack, pick = self.position()
-        return {"draft_id": self.draft_id, "event_name": self.event_name,
+        return {"draft_id": self.identity, "event_name": self.event_name,
                 "pack": pack, "pick": pick, "pack_cards": list(self.pack_cards),
                 "pool": list(self.pool), "picks": [dict(item) for item in self.picks],
                 "updated_at": self.updated_at, "records": self.records,
@@ -253,6 +277,7 @@ class DraftTracker:
     def _reset(self):
         self.pack_cards, self.pool, self.picks = [], [], []
         self.pack_number = self.pick_number = None
+        self.origin = ""
 
     def _position(self, value):
         key, raw = _first(value, PACK_NUMBER_KEYS)
@@ -275,12 +300,19 @@ class DraftTracker:
             return False
         self.matched_keys.add(key)
         self._identify(value)
+        pool_key, pool = _first(value, POOL_KEYS)
+        picked = card_ids(pool)
+        # With no id to compare, a second draft in one session announces itself the only
+        # way it can: a pack arrives with nothing picked yet while a pool is already held.
+        if self.pool and not picked and _looks_first(value):
+            self._reset()
+        if not self.origin:
+            self.origin = hashlib.sha256(
+                ",".join(str(card) for card in cards).encode()).hexdigest()[:12]
         previous = {"pack": list(self.pack_cards), "pool": list(self.pool),
                     "position": self.position()}
         self._position(value)
         self.pack_cards = cards
-        pool_key, pool = _first(value, POOL_KEYS)
-        picked = card_ids(pool)
         if picked:
             # The bot draft restates the whole pool, which is more reliable than a pick
             # log this reader may have started too late to have seen.

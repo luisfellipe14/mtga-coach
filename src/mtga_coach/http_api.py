@@ -107,6 +107,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, {"rulings": service.rulings_for([int(v) for v in values if v])})
         elif path == "/api/draft":
             self._send(HTTPStatus.OK, service.draft())
+        elif path == "/api/draft/deck":
+            self._send(HTTPStatus.OK, service.draft_deck())
+        elif path == "/api/draft/deck/export":
+            self._send(HTTPStatus.OK, service.draft_deck_export())
         elif path == "/api/draft/export":
             self._send(HTTPStatus.OK, service.draft_pool_export())
         elif path == "/api/limited":

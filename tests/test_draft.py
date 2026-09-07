@@ -6,6 +6,7 @@ pick on its own. Both are exercised, because a reader that only understands one 
 is a reader that silently shows an empty pack for half the events in the client.
 """
 
+import json
 import unittest
 
 from mtga_coach import pick
@@ -97,6 +98,49 @@ class HumanDraftTest(unittest.TestCase):
         state = self.tracker.state()
         self.assertEqual(state["pool"], [])
         self.assertEqual(state["pack_cards"], [301, 302])
+
+
+class IdentityTest(unittest.TestCase):
+    """The real bot draft carries no id of any kind — checked against a captured log."""
+
+    def pack(self, pick, cards, pool):
+        return record({"CurrentModule": "BotDraft", "Payload": json.dumps(
+            {"Result": "Success", "EventName": "QuickDraft_TST_20260831",
+             "DraftStatus": "PickNext", "PackNumber": 0, "PickNumber": pick,
+             "NumCardsToPick": 1, "DraftPack": [str(c) for c in cards],
+             "PickedCards": [str(c) for c in pool]})})
+
+    def test_the_identity_comes_from_the_first_pack(self):
+        tracker = DraftTracker()
+        tracker.consume(self.pack(0, [11, 12, 13], []))
+        first = tracker.identity
+        self.assertTrue(first.startswith("QuickDraft_TST_20260831-"))
+        tracker.consume(self.pack(1, [12, 13], [11]))
+        # It must not drift as the draft goes on, or every flush files a new draft.
+        self.assertEqual(tracker.identity, first)
+
+    def test_reading_the_same_log_twice_gives_the_same_identity(self):
+        one, two = DraftTracker(), DraftTracker()
+        one.consume(self.pack(0, [11, 12, 13], []))
+        two.consume(self.pack(0, [11, 12, 13], []))
+        self.assertEqual(one.identity, two.identity)
+
+    def test_a_second_draft_in_one_session_starts_clean(self):
+        tracker = DraftTracker()
+        tracker.consume(self.pack(0, [11, 12, 13], []))
+        tracker.consume(self.pack(1, [12, 13], [11]))
+        first = tracker.identity
+        tracker.consume(self.pack(0, [21, 22, 23], []))
+        self.assertEqual(tracker.state()["pool"], [])
+        self.assertNotEqual(tracker.identity, first)
+
+    def test_the_pick_is_deduced_from_the_pool(self):
+        tracker = DraftTracker()
+        tracker.consume(self.pack(0, [11, 12, 13], []))
+        tracker.consume(self.pack(1, [12, 13], [11]))
+        picks = tracker.state()["picks"]
+        self.assertEqual([(p["card_id"], p["pack"], p["pick"]) for p in picks], [(11, 1, 1)])
+        self.assertEqual(picks[0]["pack_cards"], [11, 12, 13])
 
 
 class DiagnosticsTest(unittest.TestCase):

@@ -311,3 +311,13 @@ details.zone-chip[open] { flex-basis: 100%; }
 .pool-card small { color: var(--muted); display: block; }
 .draft-credit { color: var(--muted); display: block; margin-top: 1.2rem; }
 code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; word-break: break-all; }
+
+.deck-stage { margin-top: .8rem; }
+.deck-head { align-items: center; display: flex; font-size: .95rem; gap: .4rem; }
+.deck-columns { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin: .9rem 0; }
+.deck-column h4 { border-bottom: 1px solid rgba(255,255,255,.09); color: var(--muted); font-size: .72rem; letter-spacing: .08em; margin: 0 0 .4rem; padding-bottom: .25rem; text-transform: uppercase; }
+.deck-line { background: none; border: 0; border-left: 2px solid rgba(255,255,255,.09); color: inherit; cursor: pointer; display: block; padding: .25rem .5rem; text-align: left; width: 100%; }
+.deck-line:hover { border-left-color: var(--gold); }
+.deck-line small { color: var(--muted); display: block; font-size: .7rem; }
+.deck-cut { margin: .8rem 0; }
+.deck-cut summary { color: var(--muted); cursor: pointer; font-size: .8rem; }

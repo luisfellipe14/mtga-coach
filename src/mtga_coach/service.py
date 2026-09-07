@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, coach, pick, timeline
+from . import analysis, build, coach, pick, timeline
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
@@ -696,6 +696,48 @@ class CoachService:
             },
             "credit": LIMITED_CREDIT,
         }
+
+    def draft_deck(self) -> dict:
+        """The pool turned into a registrable deck, with the pairs that lost.
+
+        A pool is not a deck, and the step between them is where a new player gives away
+        the most games. What is decided here is only the mechanical part: the colour pair
+        the pool paid for, the best cards in it, and a mana base for the pips those cards
+        demand.
+        """
+        state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft()
+        if not state:
+            raise KeyError("no draft stored")
+        pool_ids = [int(cid) for cid in state.get("pool") or []]
+        cards = {int(key): value for key, value in self.cards(pool_ids).items()}
+        expansion = self._draft_set([], pool_ids, cards)
+        event = limited_format(state.get("event_name") or "")
+        ratings, table = self._ratings_for(expansion, event, pool_ids)
+        answer = build.suggest(pool_ids, cards, ratings)
+        deck_ids = [item["card_id"] for item in answer.get("spells") or []]
+        return {**answer, "expansion": expansion, "table": table,
+                "cards": {str(cid): cards[cid] for cid in set(pool_ids + deck_ids) if cid in cards},
+                "pool_size": len(pool_ids), "credit": LIMITED_CREDIT}
+
+    def draft_deck_export(self) -> dict:
+        """The suggested deck as an Arena list, ready to paste into the client."""
+        answer = self.draft_deck()
+        if not answer.get("spells"):
+            raise KeyError("no deck could be built")
+        cards = {int(key): value for key, value in (answer.get("cards") or {}).items()}
+        counts: dict[int, int] = {}
+        for item in answer["spells"]:
+            counts[item["card_id"]] = counts.get(item["card_id"], 0) + 1
+        for land in answer["land_base"]["nonbasic"]:
+            counts[land["card_id"]] = counts.get(land["card_id"], 0) + int(land["quantity"])
+        lines = [{"id": cid, "quantity": quantity} for cid, quantity in counts.items()]
+        text = format_arena({"main": lines, "sideboard": []},
+                            {str(cid): card for cid, card in cards.items()})
+        # Arena reads a basic land by name alone, and the app has no printing for one.
+        basics = "\n".join(f"{quantity} {build.BASIC_NAMES[colour]}"
+                           for colour, quantity in answer["land_base"]["basics"].items() if quantity)
+        return {**text, "text": text["text"] + basics + ("\n" if basics else ""),
+                "cards": sum(counts.values()) + sum(answer["land_base"]["basics"].values())}
 
     def _draft_set(self, pack_ids: list[int], pool_ids: list[int], cards: dict) -> str:
         """The set being drafted, taken from the cards themselves.

@@ -56,7 +56,7 @@ const state = {
   summary: null, games: [], mode: 'BO1', detail: null, framePosition: 0, cards: {}, deckCards: {},
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
-  draft: null, draftTimer: null, draftStamp: '',
+  draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false,
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -1347,6 +1347,7 @@ function renderDraft() {
     target.append(packGrid(draft.advice, draft.pack_cards ?? []));
   }
   target.append(poolBlock(draft));
+  target.append(deckBlock());
   target.append(element('small', 'draft-credit', draft.credit));
 }
 
@@ -1483,6 +1484,114 @@ function poolBlock(draft) {
     box.append(history);
   }
   return box;
+}
+
+// A pool is not a deck, and the step between them is where a new player gives away the
+// most games. The build is offered, never applied: the list is his to change.
+function deckBlock() {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'Deck to register'));
+  const action = element('button', 'button primary', state.deck ? 'Build it again' : 'Build the deck from this pool');
+  action.type = 'button';
+  action.addEventListener('click', () => loadDeck(box));
+  box.append(action);
+  const stage = element('div', 'deck-stage');
+  box.append(stage);
+  if (state.deck) renderDeck(stage, state.deck);
+  return box;
+}
+
+async function loadDeck(box) {
+  const stage = box.querySelector('.deck-stage');
+  stage.replaceChildren(element('p', 'subtle', 'Building\u2026'));
+  try {
+    state.deck = await request('/api/draft/deck');
+    Object.assign(state.cards, state.deck.cards ?? {});
+    renderDeck(stage, state.deck);
+  } catch (error) {
+    stage.replaceChildren(element('p', 'gap', error.message));
+  }
+}
+
+function renderDeck(stage, deck) {
+  stage.replaceChildren();
+  if (!deck.pair) {
+    stage.append(element('p', 'gap', deck.reason ?? 'No deck could be built from this pool.'));
+    return;
+  }
+  const head = element('p', 'deck-head');
+  head.append(colourPips(deck.pair.split('')));
+  head.append(document.createTextNode(
+    ` ${deck.spells.length} spells + ${deck.lands} lands \u00b7 ${deck.creatures} creatures`
+    + (deck.short ? ` \u00b7 ${deck.short} short of a full deck` : '')));
+  stage.append(head);
+
+  if (deck.basis === 'structure') {
+    const warn = element('p', 'gap', deck.note);
+    stage.append(warn);
+  } else {
+    stage.append(element('p', 'subtle',
+      `Ordered by 17Lands win rate \u00b7 ${deck.coverage.covered} of ${deck.coverage.of_pool} pool cards covered.`));
+  }
+
+  if (deck.alternatives?.length) {
+    const alts = deck.alternatives.map((item) =>
+      `${item.pair} ${item.total}${item.short ? ` (${item.short} short)` : ''}`).join(' \u00b7 ');
+    stage.append(element('p', 'subtle', `Pairs that lost: ${alts}. Yours totalled ${deck.total}.`));
+  }
+
+  const list = element('div', 'deck-columns');
+  const byMana = new Map();
+  deck.spells.forEach((item) => {
+    const key = item.mana_value ?? 0;
+    if (!byMana.has(key)) byMana.set(key, []);
+    byMana.get(key).push(item);
+  });
+  [...byMana.keys()].sort((a, b) => a - b).forEach((mana) => {
+    const column = element('div', 'deck-column');
+    column.append(element('h4', null, `${mana} mana \u00b7 ${byMana.get(mana).length}`));
+    byMana.get(mana).sort((a, b) => b.score - a.score).forEach((item) => {
+      const row = element('button', 'deck-line', '');
+      row.type = 'button';
+      row.append(element('strong', null, item.name));
+      row.append(element('small', null, `${item.score} \u00b7 ${(item.why ?? []).slice(0, 2).join(', ') || 'no reason recorded'}`));
+      row.addEventListener('click', () => inspectCard(item.card_id));
+      column.append(row);
+    });
+    list.append(column);
+  });
+  stage.append(list);
+
+  const lands = Object.entries(deck.land_base.basics).map(([colour, quantity]) => `${quantity} ${colour}`).join(' \u00b7 ');
+  const nonbasic = deck.land_base.nonbasic.map((item) => `${item.quantity} ${item.name}`).join(', ');
+  stage.append(element('p', null, `Mana base: ${lands}${nonbasic ? ` \u00b7 ${nonbasic}` : ''}`));
+  (deck.mana ?? []).forEach((item) => {
+    stage.append(element('p', item.shortfall ? 'gap' : 'subtle',
+      `${item.colour} \u00d7${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources`
+      + (item.shortfall ? ` \u2014 ${item.shortfall} short, wanted by ${item.driver}` : ' \u2014 met')
+      + ` (${item.basis})`));
+  });
+
+  if (deck.left_out?.length) {
+    const cut = element('details', 'deck-cut');
+    cut.append(element('summary', null, `Left out \u00b7 ${deck.left_out.length} of the best`));
+    deck.left_out.forEach((item) => cut.append(element('p', 'subtle',
+      `${item.name} \u00b7 ${item.score} \u00b7 ${item.colours.join('') || 'colourless'}`)));
+    stage.append(cut);
+  }
+
+  const copy = element('button', 'button secondary', 'Copy the deck for Arena');
+  copy.type = 'button';
+  copy.addEventListener('click', async () => {
+    try {
+      const payload = await request('/api/draft/deck/export');
+      await navigator.clipboard.writeText(payload.text);
+      setMessage(`${payload.cards} cards copied. Paste them into the deck importer in Arena.`);
+    } catch (error) { setMessage(`The deck was not copied: ${error.message}`, 'error'); }
+  });
+  stage.append(copy);
+  stage.append(element('small', null,
+    'This decides the mechanical part only \u2014 the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
 }
 
 function draftDiagnostics(diagnostics) {
