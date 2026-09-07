@@ -78,13 +78,20 @@ LAND_ADJUSTMENTS = {"cheap_draw": -0.28, "fast_mana": -1.00,
                     "untapped_mdfc": -0.74, "tapped_mdfc": -0.38}
 
 
-def published_sources_needed(pips, turn):
+def published_sources_needed(pips, turn, deck_size=60):
     """Karsten's published requirement, or the nearest published turn for that pip count.
 
     Returns (sources, exact) where `exact` is False when the table has no entry for that
     turn and the closest published turn was used instead. Outside the published range the
     answer is None — the app then shows the hypergeometric floor and says which it is.
+
+    The table is for a 60-card deck. A limited deck is 40, where the same requirement is
+    met by materially fewer sources, and scaling the published figures would be this app
+    publishing numbers Karsten did not. So a 40-card deck gets no published answer and
+    falls through to the floor, which is computed for the deck it is actually about.
     """
+    if deck_size != 60:
+        return None, False
     if (pips, turn) in KARSTEN_2022_SOURCES:
         return KARSTEN_2022_SOURCES[(pips, turn)], True
     candidates = [key for key in KARSTEN_2022_SOURCES if key[0] == pips]
@@ -239,7 +246,7 @@ def colour_requirements(entries, deck_size=60, target=0.90):
     available = colour_sources(entries)["by_colour"]
     findings = []
     for (colour, pips), demand in sorted(demands.items()):
-        published, exact = published_sources_needed(pips, demand["turn"])
+        published, exact = published_sources_needed(pips, demand["turn"], deck_size)
         floor = sources_needed(pips, demand["turn"], deck_size, target)
         needed = published if published is not None else floor
         if needed is None:
