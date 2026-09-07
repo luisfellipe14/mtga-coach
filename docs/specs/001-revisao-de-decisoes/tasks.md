@@ -118,3 +118,43 @@ sob demanda.
   - [ ] Resultado de jogo e de confronto conferidos separadamente contra o que o Arena mostrou.
   - [ ] Troca de sideboard entre jogos registrada como configuração, sem criar versão experimental.
   - [ ] Revisão do jogo 2 distingue carta vista no jogo 1 de carta confirmada no jogo atual.
+
+---
+
+## Terceira rodada — 07/09/2026
+
+Origem: pedidos do operador na mesma sessão — imagens de carta, import/export de decks no
+formato do Arena, conexão de IA, e a decisão de que o produto é **GTM**, com inglês como
+idioma padrão.
+
+### T011 — Arte de carta pelo Scryfall, opcional e em cache
+- **Files**: `src/mtga_coach/art.py`, `tests/test_extras.py`
+- **Done when** (binary):
+  - [x] Desligado por padrão; sai da máquina só código de coleção e número da carta.
+  - [x] Uma requisição em lote resolve o deck inteiro; carta só-Arena cai no `/cards/arena`.
+  - [x] Carta sem impressão em papel é lembrada e não volta a ser pedida; falha de rede **não** é confundida com ausência de imagem.
+  - [x] Imagem baixada uma vez e servida do disco por `/art/{id}.jpg`.
+  - [x] Nenhum teste toca a rede (fetcher isolado).
+
+### T012 — Import/export de deck no formato do Arena
+- **Files**: `src/mtga_coach/decklist.py`, `src/mtga_coach/catalog.py`
+- **Done when** (binary):
+  - [x] Export escreve quantidade, nome em inglês, coleção e número; carta não resolvida sai como comentário.
+  - [x] Import lê seções, quantidades e reporta a linha que não reconheceu.
+  - [x] Coleção/número que não batem com o nome da linha caem para o nome, com aviso — um código de outro site não resolve silenciosamente para outra carta.
+  - [x] Lista colada recebe a mesma análise (curva, base de mana, curingas) sem ser gravada.
+
+### T013 — Leitura por IA sobre números já calculados
+- **Files**: `src/mtga_coach/coach.py`, `src/mtga_coach/secrets.py`
+- **Done when** (binary):
+  - [x] O prompt de sistema proíbe recalcular, inventar texto de carta e afirmar jogada certa.
+  - [x] Quatro modos: explicar, perguntar, alternativas e deck.
+  - [x] Material = contexto sanitizado + números do app; nada de log bruto ou identificador de conta.
+  - [x] Chave cifrada por DPAPI, fora do banco e do git; ausência de pacote ou de chave devolve motivo legível.
+
+### T014 — Inglês como idioma do produto
+- **Done when** (binary):
+  - [x] Interface, mensagens de API, rótulos de evento, contexto exportado e prompts em inglês.
+  - [x] Texto de carta segue a tabela de localização do próprio Arena, `enUS` por padrão.
+  - [x] Rótulo e formato derivados na leitura, para linha gravada por build anterior ler igual.
+  - [ ] Camada de i18n de verdade (troca de idioma pela interface) — não feita; hoje o padrão é fixo.
