@@ -214,6 +214,10 @@ class LogIngestor:
         self.draft = DraftTracker()
         self._clock = None
         self.current_match, self.current_key = None, None
+        # The client announces the deck before it announces the room it belongs to, so the
+        # list has to wait for the match that is about to start instead of being handed to
+        # the one that just finished.
+        self._pending_deck = None
         self._self_user_id = None
         self.dirty = set()
         self.released = set()
@@ -384,6 +388,8 @@ class LogIngestor:
         event_ids = [p.get("eventId") for p in players if p.get("eventId")]
         if event_ids:
             meta["event_id"] = event_ids[0]
+        if self._pending_deck and not meta["deck"]["main"]:
+            self._apply_deck(self.current_match, self._pending_deck)
         entry = self.matches.setdefault(self.current_match, {"id": self.current_match})
         entry["event_id"] = meta.get("event_id", entry.get("event_id", ""))
         entry.setdefault("started_at", read_timestamp(record["payload"].get("timestamp")))
@@ -419,7 +425,7 @@ class LogIngestor:
             if field in value and self.current_match:
                 supplied = value[field].get("deckMessage", value[field])
                 if "deckCards" in supplied:
-                    self._meta(self.current_match)["deck"] = composition(supplied)
+                    self._apply_deck(self.current_match, composition(supplied))
         if message_type == "GREMessageType_MulliganReq":
             self._count_mulligan(value)
         gsm = value.get("gameStateMessage")
@@ -444,6 +450,16 @@ class LogIngestor:
                 self.dirty.add(self.current_key)
 
     def _on_connect(self, value):
+        """The list the player registered, which arrives ahead of its own match.
+
+        Measured on a real log: the ConnectResp carrying forty cards is written two lines
+        before the gameRoomConfig of the match it belongs to. Applying it to whatever match
+        was current handed it to the previous game and left the new one with no deck — and
+        with no deck there is no library count and no draw odds for the whole game.
+        """
+        deck = composition(value.get("connectResp", {}).get("deckMessage", {}))
+        if deck["main"]:
+            self._pending_deck = deck
         if not self.current_match:
             return
         meta = self._meta(self.current_match)
@@ -451,9 +467,12 @@ class LogIngestor:
         if not meta.get("seat") and len(seats) == 1 and type(seats[0]) is int and seats[0] > 0:
             meta["seat"] = seats[0]
             self._apply_seat(self.current_match, seats[0])
-        meta["deck"] = composition(value.get("connectResp", {}).get("deckMessage", {}))
-        if meta["deck"]["main"]:
-            meta.setdefault("registered_deck_id", deck_hash(meta["deck"]))
+        # Both orders happen. When the connect follows its own room the current match has
+        # not played a frame yet and the list is its own; when it precedes the next room the
+        # current match is already under way and the list belongs to the match after it.
+        started = any(game["match_id_hashed"] == self.current_match for game in self.games.values())
+        if deck["main"] and not meta["deck"]["main"] and not started:
+            self._apply_deck(self.current_match, deck)
 
     def _count_mulligan(self, value):
         if not self.current_key or self.current_key not in self.games:
@@ -469,6 +488,26 @@ class LogIngestor:
 
     def _meta(self, match):
         return self.metadata.setdefault(match, {"seat": 0, "deck": {"main": [], "sideboard": []}})
+
+    def _apply_deck(self, match, deck):
+        """Record the registered list, and give it to games that started without one.
+
+        The deck reaches a game as a copy taken when its first frame arrives. In a limited
+        event the list is submitted after that, so the copy was empty and stayed empty —
+        which left the library count, and every draw odd built on it, unavailable for the
+        whole game. Handing the list to games that have none repairs that as it arrives.
+        """
+        meta = self._meta(match)
+        meta["deck"] = deck
+        if deck["main"]:
+            meta["registered_deck_id"] = deck_hash(deck)
+        for key, game in self.games.items():
+            if game["match_id_hashed"] != match or game["deck"].get("main"):
+                continue
+            game["deck"] = deepcopy(deck)
+            game["deck_id"] = deck_hash(deck)
+            game["registered_deck_id"] = meta.get("registered_deck_id", game["registered_deck_id"])
+            self.dirty.add(key)
 
     def _apply_seat(self, match, seat):
         for key, game in self.games.items():
@@ -486,6 +525,8 @@ class LogIngestor:
         meta = self._meta(self.current_match)
         if self.current_key not in self.games:
             self._start_game(info, meta, record)
+        if self._pending_deck and not self.games[self.current_key]["deck"].get("main"):
+            self._apply_deck(self.current_match, self._pending_deck)
         game, reducer = self.games[self.current_key], self.reducers[self.current_key]
         sid = gsm.get("gameStateId")
         if sid is None or sid in self.frame_maps[self.current_key]:

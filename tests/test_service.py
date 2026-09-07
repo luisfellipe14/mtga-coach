@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -121,3 +122,61 @@ class CoachServiceTests(unittest.TestCase):
         self.assertEqual(context["context"]["deck"], current["deck"])
         self.assertEqual(context["context"]["prior_match_reveals"], [{"card_id": 777, "knowledge": "historical_prior_match"}])
         self.assertFalse(service.decision_context("unknown-self", 0)["eligible"])
+
+
+class LateDeckTest(unittest.TestCase):
+    """The client announces the deck before the room it belongs to."""
+
+    @staticmethod
+    def line(payload):
+        return (json.dumps(payload) + "\n").encode("utf-8")
+
+    def snapshot(self, records):
+        from mtga_coach.ingest import LogIngestor
+
+        ingestor = LogIngestor("test")
+        for record in records:
+            ingestor.feed(self.line(record))
+        ingestor.finish()
+        return ingestor.snapshot()
+
+    def connect(self, cards):
+        return {"greToClientEvent": {"greToClientMessages": [{
+            "type": "GREMessageType_ConnectResp", "systemSeatIds": [1],
+            "connectResp": {"deckMessage": {"deckCards": cards}}}]}}
+
+    def room(self, match_id):
+        return {"matchGameRoomStateChangedEvent": {"gameRoomInfo": {"gameRoomConfig": {
+            "matchId": match_id, "reservedPlayers": [
+                {"userId": "me", "systemSeatId": 1, "teamId": 1, "eventId": "Ladder"}]}}}}
+
+    def state(self, match_id, state_id):
+        return {"greToClientEvent": {"greToClientMessages": [{
+            "type": "GREMessageType_GameStateMessage", "gameStateId": state_id,
+            "gameStateMessage": {"gameStateId": state_id, "type": "GameStateType_Full",
+                                 "gameInfo": {"matchID": match_id, "gameNumber": 1,
+                                              "stage": "GameStage_Start"},
+                                 "turnInfo": {"turnNumber": 1, "activePlayer": 1},
+                                 "players": [{"systemSeatNumber": 1, "lifeTotal": 20, "teamId": 1}],
+                                 "zones": [], "gameObjects": []}}]}}
+
+    def test_a_deck_announced_before_its_room_still_reaches_the_game(self):
+        cards = [101] * 20 + [102] * 20
+        snapshot = self.snapshot([
+            self.room("first"), self.state("first", 1),
+            # The measured order: connect, then the room of the match it belongs to.
+            self.connect(cards), self.room("second"), self.state("second", 2),
+        ])
+        games = {game["id"]: game for game in snapshot["games"]}
+        second = next(game for game in games.values() if len(game["deck"]["main"]) > 0)
+        self.assertEqual(sum(item["quantity"] for item in second["deck"]["main"]), 40)
+
+    def test_the_pending_deck_does_not_land_on_the_previous_match(self):
+        cards = [101] * 40
+        snapshot = self.snapshot([
+            self.room("first"), self.state("first", 1),
+            self.connect(cards), self.room("second"), self.state("second", 2),
+        ])
+        first = next(game for game in snapshot["games"] if game["match_id_hashed"] !=
+                     next(g["match_id_hashed"] for g in snapshot["games"] if g["deck"]["main"]))
+        self.assertEqual(first["deck"]["main"], [])
