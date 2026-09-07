@@ -22,8 +22,8 @@ built on the log the client already writes on your machine. It runs entirely on
 - **Imports and exports decklists** in Arena's own format, so a list goes straight back into
   the client, and any list you paste gets the same analysis before you build it.
 - **Keeps your notes and hypotheses** per position and per deck.
-- **Optionally fetches card art** from Scryfall and **optionally asks Claude** to read a
-  position. Both are off until you switch them on.
+- **Optionally fetches card art and card rulings** from Scryfall, and can hand a position to
+  an assistant. Everything above works offline with none of that switched on.
 
 What it does **not** do: it never tells you what the correct play was, never assigns win
 probabilities to alternative lines. Nothing public can evaluate a Magic line with any
@@ -105,10 +105,13 @@ Both start switched off, and both are per-feature toggles in **Settings**.
   only. The Comprehensive Rules are deliberately *not* bundled: at roughly 225,000 tokens they
   would cost more per question than everything else in the request combined, and they do not
   answer "what does this card do here" — the rulings do.
-- **AI reading (Anthropic).** Sends the sanitised position — only what you knew at that
-  instant — plus the numbers the app computed. The model is instructed not to recompute them,
-  not to invent card text, and never to call a play correct. Your key is encrypted locally and
-  never written to the database or to git.
+- **AI reading (Anthropic), optional and not the way in.** The button that costs nothing is
+  **Copy the question**: it puts the whole prompt — the sanitised position, the numbers the app
+  computed, and the instruction — on your clipboard, for you to paste into Claude, ChatGPT or
+  whatever assistant you already use. No account here, no key, nothing sent from this app.
+  If you happen to have an Anthropic API key, you can store it and skip the copy-and-paste;
+  that is a shortcut, billed to you, at a fraction of a cent per reading. The key is encrypted
+  locally and never written to the database or to git.
 
 ## Known limits
 
@@ -156,6 +159,13 @@ Worth stating plainly, since this reads a game log.
 - Delete `%LOCALAPPDATA%/mtga-coach/` and everything the app knows is gone.
 
 ## Sharing it
+
+**It is free, and it has to be.** The Fan Content Policy permits fan projects on a
+non-commercial basis only, so there is no paid version to build: no licence, no subscription,
+no paywall. Nothing in the app is gated either — the replay, the library tracker, the opponent
+list, the deck analysis and the statistics all work offline with no account. The one feature
+that can cost money is the in-app AI shortcut, it is off by default, and the same reading is
+available free by pasting the copied question into any assistant.
 
 The licence is MIT, so you may copy, modify and redistribute the software freely. Two limits
 are worth knowing before you post it anywhere:

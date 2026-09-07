@@ -704,6 +704,19 @@ class CoachService:
             material["card_rulings"] = known
         return material
 
+    def coach_prompt(self, mode: str, kind: str, **kwargs) -> dict:
+        """The whole question as text, so anyone can paste it into a chat they already have.
+
+        This is the path that costs nothing and needs no account. The in-app button is the
+        same question sent for you; it is a convenience, never the way in.
+        """
+        material = self.coach_material(kind, **kwargs)
+        body = coach.build_prompt(mode, material)
+        return {"mode": mode, "text": coach.SYSTEM + "\n\n---\n\n" + body,
+                "characters": len(coach.SYSTEM) + len(body),
+                "note": ("Paste this into any assistant. It carries only the sanitised "
+                         "position and the numbers this app computed.")}
+
     def coach_review(self, mode: str, kind: str, **kwargs) -> dict:
         return coach.review(self.keys.load(), mode, self.coach_material(kind, **kwargs))
 

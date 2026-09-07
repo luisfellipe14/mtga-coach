@@ -782,19 +782,12 @@ const COACH_MODES = [
 function renderCoachTab(target, frame) {
   const coach = state.summary?.coach;
   target.append(element('p', 'eyebrow', 'AI READING'));
-  if (!coach?.ready) {
-    target.append(element('p', 'subtle', coach?.package === false
-      ? `Missing package. Run: ${coach?.install}`
-      : 'No Anthropic key stored. Open Settings to paste yours.'));
-    const link = element('button', 'text-button', 'Open Settings'); link.type = 'button';
-    link.addEventListener('click', () => setView('settings'));
-    target.append(link);
-    return;
-  }
   if (frame.quality !== 'complete') {
     target.append(element('p', 'gap', 'This stretch has a gap: the context is not eligible for a reading.'));
     return;
   }
+  target.append(element('p', 'subtle', 'The app has already computed the numbers. A model only reads them — it is told not to recompute, not to invent card text, and never to call a play correct.'));
+
   const picker = element('div', 'coach-modes');
   COACH_MODES.forEach(([key, label]) => {
     const button = element('button', `sidebar-tab${state.coachMode === key ? ' active' : ''}`, label);
@@ -803,12 +796,34 @@ function renderCoachTab(target, frame) {
     picker.append(button);
   });
   target.append(picker);
-  const run = element('button', 'button primary', state.coachBusy ? 'Reading…' : 'Ask for a reading');
-  run.type = 'button'; run.disabled = state.coachBusy;
-  run.addEventListener('click', () => askCoach({ kind: 'position', game_id: state.detail.id, index: frame.index }, frame));
-  target.append(run);
-  target.append(element('small', null, `Model ${coach.model}. The app sends only the sanitised position and the numbers it computed itself.`));
+
+  // The free path first: the whole question as text, for any chat the player already has.
+  const copy = element('button', 'button primary', 'Copy the question');
+  copy.type = 'button';
+  copy.addEventListener('click', () => copyPrompt({ kind: 'position', game_id: state.detail.id, index: frame.index }));
+  target.append(copy);
+  target.append(element('small', null, 'Paste it into Claude, ChatGPT or any assistant you already use. Free, no account here, nothing sent from this app.'));
+
+  const shortcut = element('div', 'coach-shortcut');
+  if (coach?.ready) {
+    const run = element('button', 'button secondary', state.coachBusy ? 'Reading…' : `Or ask ${coach.model} from here`);
+    run.type = 'button'; run.disabled = state.coachBusy;
+    run.addEventListener('click', () => askCoach({ kind: 'position', game_id: state.detail.id, index: frame.index }, frame));
+    shortcut.append(run);
+    shortcut.append(element('small', null, 'Your own API key, billed to you, a fraction of a cent per reading.'));
+  } else {
+    shortcut.append(element('small', null, 'Optional: add an Anthropic key in Settings to skip the copy-and-paste. Everything else in the app works without it.'));
+  }
+  target.append(shortcut);
   if (state.coachAnswer) target.append(coachAnswerBlock(state.coachAnswer));
+}
+
+async function copyPrompt(payload) {
+  try {
+    const answer = await postJson('/api/coach/prompt', { mode: state.coachMode, ...payload });
+    await navigator.clipboard.writeText(answer.text);
+    setMessage(`Question copied (${Math.round(answer.characters / 1000)} k characters). Paste it into any assistant.`);
+  } catch (error) { setMessage(`The question was not copied: ${error.message}`, 'error'); }
 }
 
 function coachAnswerBlock(answer) {
@@ -1027,14 +1042,17 @@ function deckCoachBlock(report) {
   const box = element('section', 'deck-section');
   box.append(element('h3', null, 'AI reading'));
   const coach = state.summary?.coach;
-  if (!coach?.ready) {
-    box.append(element('p', 'subtle', 'Add your key in Settings to ask for a reading of this list.'));
-    return box;
+  const copy = element('button', 'button primary', 'Copy the question');
+  copy.type = 'button';
+  copy.addEventListener('click', () => { state.coachMode = 'deck'; copyPrompt({ kind: 'deck', deck_id: report.deck_id }); });
+  box.append(copy);
+  box.append(element('small', null, 'Paste it into any assistant you already use.'));
+  if (coach?.ready) {
+    const run = element('button', 'button secondary', state.coachBusy ? 'Reading…' : `Or ask ${coach.model} from here`);
+    run.type = 'button'; run.disabled = state.coachBusy;
+    run.addEventListener('click', () => { state.coachMode = 'deck'; askCoach({ kind: 'deck', deck_id: report.deck_id }, null); });
+    box.append(run);
   }
-  const run = element('button', 'button secondary', state.coachBusy ? 'Reading…' : 'Suggest swaps from the numbers');
-  run.type = 'button'; run.disabled = state.coachBusy;
-  run.addEventListener('click', () => { state.coachMode = 'deck'; askCoach({ kind: 'deck', deck_id: report.deck_id }, null); });
-  box.append(run);
   if (state.coachAnswer) box.append(coachAnswerBlock(state.coachAnswer));
   return box;
 }

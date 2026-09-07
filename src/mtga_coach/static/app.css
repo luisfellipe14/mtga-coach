@@ -274,3 +274,5 @@ details.zone-chip[open] { flex-basis: 100%; }
 
 .rulings { border-top: 1px solid var(--line); margin-top: .6rem; padding-top: .5rem; }
 .rulings p { color: var(--muted); font-size: .78rem; line-height: 1.45; margin: 0 0 .4rem; }
+
+.coach-shortcut { border-top: 1px solid var(--line); display: grid; gap: .4rem; margin-top: .6rem; padding-top: .6rem; }

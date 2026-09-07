@@ -234,6 +234,13 @@ class _Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/coach/key":
                 self._send(HTTPStatus.OK, self.coach_service.save_api_key(
                     self._json(body).get("key", "")))
+            elif parsed.path == "/api/coach/prompt":
+                payload = self._json(body)
+                kind = str(payload.get("kind", "position"))
+                arguments = {"deck_id": payload["deck_id"]} if kind == "deck" else {
+                    "game_id": payload.get("game_id"), "index": payload.get("index")}
+                self._send(HTTPStatus.OK, self.coach_service.coach_prompt(
+                    str(payload.get("mode", "")), kind, **arguments))
             elif parsed.path in ("/api/coach/review", "/api/coach/estimate"):
                 self._coach(parsed.path.endswith("review"), self._json(body))
             elif parsed.path in ("/api/capture/start", "/api/capture/stop"):
