@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#10231d">
+    <title>MTGA Coach — revisão local</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+    <header class="topbar">
+      <div class="brand"><span class="brand-gem" aria-hidden="true">◆</span><span>MTGA <em>Coach</em></span></div>
+      <p class="provenance">Fonte declarada: <strong>logs locais</strong> <span id="capture-line"></span></p>
+      <div class="top-actions">
+        <button id="capture-toggle" class="button secondary" type="button">Acompanhar partidas</button>
+        <label class="button secondary file-button">Enviar log<input id="log-upload" type="file" accept=".log,.txt,application/octet-stream"></label>
+        <button id="import-configured" class="button primary" type="button">Importar logs</button>
+      </div>
+    </header>
+    <div class="shell">
+      <nav class="navigation" aria-label="Seções principais">
+        <button class="nav-item active" type="button" data-view="partidas"><span aria-hidden="true">⌁</span> Partidas</button>
+        <button class="nav-item" type="button" data-view="decks"><span aria-hidden="true">◇</span> Decks</button>
+        <button class="nav-item" type="button" data-view="estatisticas"><span aria-hidden="true">▤</span> Estatísticas</button>
+        <button class="nav-item" type="button" data-view="treino"><span aria-hidden="true">◌</span> Treino</button>
+        <div class="nav-foot"><span class="status-dot"></span> Revisão manual<br><small>IA não conectada</small></div>
+      </nav>
+      <main id="conteudo" class="content">
+        <div id="app-message" class="message" role="status" hidden></div>
+
+        <section id="view-partidas" class="view active" aria-labelledby="partidas-title">
+          <div class="dashboard-heading">
+            <div><p class="eyebrow">SESSÃO LOCAL</p><h1 id="partidas-title">Reveja o que a partida registrou.</h1><p class="subtle">Resultados observados, posições reconstruídas e lacunas explícitas.</p></div>
+            <div class="mode-filter" role="group" aria-label="Filtrar modo"><button class="mode" data-mode="ambos" type="button">Ambos</button><button class="mode active" data-mode="BO1" type="button">BO1</button><button class="mode" data-mode="BO3" type="button">BO3</button></div>
+          </div>
+          <section class="hero-panel">
+            <div id="hero-mode-label" class="hero-label">REVISÃO BO1</div><div><strong id="bo1-rate">—</strong><span id="hero-rate-label"> taxa de vitória BO1</span></div><p id="bo1-detail">Aguardando dados importados.</p>
+          </section>
+          <section id="metrics" class="metrics" aria-label="Métricas da sessão"></section>
+          <section class="game-section">
+            <div class="section-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>Jogos observados</h2></div><span id="games-count" class="count-chip">—</span></div>
+            <div id="game-list" class="game-list" aria-live="polite"></div>
+          </section>
+          <section id="replay-section" class="replay-section" hidden aria-labelledby="replay-title">
+            <div class="section-heading"><div><p class="eyebrow">REPLAY</p><h2 id="replay-title">Posição registrada</h2></div><button id="close-replay" class="text-button" type="button">Fechar replay</button></div>
+            <div class="replay-layout"><div id="replay-main" class="replay-main"></div><aside id="decision-sidebar" class="decision-sidebar"></aside></div>
+          </section>
+        </section>
+
+        <section id="view-decks" class="view" aria-labelledby="decks-title">
+          <div class="dashboard-heading"><div><p class="eyebrow">VERSÕES OBSERVADAS</p><h1 id="decks-title">Decks e hipóteses.</h1><p class="subtle">A composição vem dos logs; uma hipótese não altera o deck ativo.</p></div></div>
+          <div class="decks-layout">
+            <section id="deck-list" class="deck-list"></section>
+            <section id="deck-detail" class="deck-detail"></section>
+            <aside class="experiment-panel">
+              <p class="eyebrow">EXPERIMENTO</p><h2>Registrar hipótese</h2>
+              <p class="subtle">Texto do usuário. Não é uma recomendação automática.</p>
+              <form id="experiment-form">
+                <label>Deck<select id="experiment-deck" name="deck_id" required></select></label>
+                <label>Título<input name="title" maxlength="120" required placeholder="Ex.: reduzir cartas de custo alto"></label>
+                <label>Hipótese<textarea name="hypothesis" maxlength="1000" required placeholder="O que pretende observar na próxima amostra?"></textarea></label>
+                <label>Alterações propostas<textarea name="changes" maxlength="1000" placeholder="Ex.: -2 carta A, +2 carta B"></textarea></label>
+                <button class="button primary" type="submit">Registrar hipótese</button>
+              </form>
+              <div id="experiments" class="experiments"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="view-estatisticas" class="view" aria-labelledby="stats-title">
+          <div class="dashboard-heading"><div><p class="eyebrow">AMOSTRA PESSOAL</p><h1 id="stats-title">O que a amostra sustenta.</h1><p class="subtle">Toda taxa vem acompanhada do intervalo e do número de partidas que a produziu.</p></div></div>
+          <div id="stats-body"></div>
+        </section>
+
+        <section id="view-treino" class="view" aria-labelledby="treino-title">
+          <p class="eyebrow">REVISÃO MANUAL</p><h1 id="treino-title">Notas para retomar decisões.</h1>
+          <p class="subtle">Abra uma partida, escolha uma posição e marque a reflexão que quer revisitar. O contexto só sai do recorte sanitizado pelo servidor.</p>
+          <div id="training-notes" class="training-notes"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
