@@ -15,6 +15,7 @@ no values) so an unfamiliar dialect can be read off the diagnostics instead of g
 """
 
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,11 @@ MAX_SHAPES = 25
 # pick number off the wrong key. The file stays on this machine like everything else.
 RAW_RECORDS = 500
 RAW_BYTES = 2 * 1024 * 1024
+# The client writes its whole deck list and card metadata as single records, megabytes at
+# a time, and a few of those match the draft-shaped test on a nested key. Kept unchecked
+# they exhaust the budget before the draft starts and the real records are dropped in
+# silence — which is what happened on the first live draft.
+RAW_RECORD_BYTES = 64 * 1024
 RAW_FILE = "draft-raw.jsonl"
 # Three packs of fifteen is the shape of every draft Arena runs today; the ceilings only
 # stop a malformed record from claiming an absurd position.
@@ -214,12 +220,19 @@ class DraftTracker:
             size = len(json.dumps(entry, ensure_ascii=False))
         except (TypeError, ValueError):
             return
+        if size > RAW_RECORD_BYTES and not recognised:
+            self.raw_dropped += 1
+            return
         self.raw.append(entry)
         self.raw_bytes += size
 
     def drain_raw(self):
-        """Hand over what was kept; the caller writes it and this reader forgets it."""
+        """Hand over what was kept; the caller writes it and this reader forgets it.
+
+        The budget is about what this reader is holding, not about the whole session: it
+        is released with the records, and the file has a ceiling of its own."""
         entries, self.raw = self.raw, []
+        self.raw_bytes = 0
         return entries
 
     def _identify(self, value):
@@ -262,6 +275,8 @@ class DraftTracker:
             return False
         self.matched_keys.add(key)
         self._identify(value)
+        previous = {"pack": list(self.pack_cards), "pool": list(self.pool),
+                    "position": self.position()}
         self._position(value)
         self.pack_cards = cards
         pool_key, pool = _first(value, POOL_KEYS)
@@ -271,9 +286,32 @@ class DraftTracker:
             # log this reader may have started too late to have seen.
             self.matched_keys.add(pool_key)
             self.pool = picked
+            self._infer_pick(previous, picked)
         self.records += 1
         self.updated_at = _now()
         return True
+
+    def _infer_pick(self, previous, pool):
+        """Which card was taken from the pack that was on screen a moment ago.
+
+        The bot draft writes no pick record: it restates the pack and the pool together.
+        The card that joined the pool between two of those is the card that was taken, and
+        the pack it left is the pack that was standing before this one — which is what
+        makes a review of the draft possible at all, because a pick without the cards it
+        beat says nothing.
+        """
+        if not previous["pack"]:
+            return
+        added = list((Counter(pool) - Counter(previous["pool"])).elements())
+        if len(added) != 1:
+            return
+        card = added[0]
+        pack, pick = previous["position"]
+        if any(item["card_id"] == card and item["pack"] == pack and item["pick"] == pick
+               for item in self.picks):
+            return
+        self.picks.append({"card_id": card, "pack": pack, "pick": pick,
+                           "pack_cards": previous["pack"], "at": _now()})
 
     def _pick_event(self, value):
         """A pick the player made: one card, in a record that also names the draft."""

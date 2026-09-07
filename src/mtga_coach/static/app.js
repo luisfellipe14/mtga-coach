@@ -1342,7 +1342,7 @@ function renderDraft() {
 
   if (!draft.advice) target.append(ratingsPrompt(draft));
   else {
-    if (draft.table?.substituted) target.append(element('p', 'gap', draft.table.note));
+    if (draft.table?.note) target.append(element('p', 'gap', draft.table.note));
     target.append(recommendation(draft.advice));
     target.append(packGrid(draft.advice, draft.pack_cards ?? []));
   }

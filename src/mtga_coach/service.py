@@ -669,10 +669,15 @@ class CoachService:
                     "diagnostics": self.watcher.draft_diagnostics() if self.watcher else None}
         pack_ids = [int(cid) for cid in state.get("pack_cards") or []]
         pool_ids = [int(cid) for cid in state.get("pool") or []]
-        cards = {int(key): value for key, value in self.cards(pack_ids + pool_ids).items()}
+        # The packs already passed are resolved too: a pick shown without the cards it beat
+        # is the one part of a draft review that says nothing.
+        passed = [int(cid) for entry in state.get("picks") or []
+                  for cid in entry.get("pack_cards") or []]
+        cards = {int(key): value
+                 for key, value in self.cards(pack_ids + pool_ids + passed).items()}
         expansion = self._draft_set(pack_ids, pool_ids, cards)
         event = limited_format(state.get("event_name") or "")
-        ratings, table = self._ratings_for(expansion, event)
+        ratings, table = self._ratings_for(expansion, event, pack_ids)
         advice = None
         if ratings:
             advice = pick.advise(pack_ids, pool_ids, ratings, cards, state.get("pick"))
@@ -705,28 +710,45 @@ class CoachService:
                 counts[code] = counts.get(code, 0) + 1
         return max(counts, key=lambda code: counts[code]) if counts else ""
 
-    def _ratings_for(self, expansion: str, event: str) -> tuple[dict | None, dict]:
+    def _ratings_for(self, expansion: str, event: str,
+                     pack_ids: list[int] | None = None) -> tuple[dict | None, dict]:
         """The table to rank by, and which one it turned out to be.
 
-        A quick draft on a set that has just released has no table of its own: 17Lands
-        answers with every card and no win rate, because nobody has played that queue yet.
-        The premier draft numbers describe the same cards, so they are used — and the
-        answer says so, because a substituted table is a fact about the advice.
+        A queue that has just opened has no table of its own: 17Lands answers with every
+        card in the set and no win rate, because nobody has played it enough yet. So the
+        tables are not tried in a fixed order — they are compared on the only thing that
+        matters at this moment, how many cards of the pack in front of the player each one
+        actually covers. The answer says which one won and how much of the pack it reaches,
+        because a substituted table and a thin table are both facts about the advice.
         """
+        missing = {"event": None, "requested": event, "substituted": False,
+                   "cards": 0, "covered": 0, "of_pack": len(pack_ids or [])}
         if not expansion:
-            return None, {"event": None, "requested": event, "substituted": False, "cards": 0}
-        order = [event] + [item for item in ("PremierDraft", "TradDraft", "QuickDraft")
-                           if item != event]
-        for candidate in order:
+            return None, missing
+        wanted = {int(cid) for cid in pack_ids or []}
+        best, chosen = None, None
+        for candidate in dict.fromkeys([event, "PremierDraft", "TradDraft", "QuickDraft"]):
             table = self.limited.ratings(expansion, candidate)
-            if table:
-                return table, {"event": candidate, "requested": event,
-                               "substituted": candidate != event, "cards": len(table),
-                               "note": ("" if candidate == event else
-                                        f"17Lands has no {event} table for {expansion} yet, so the "
-                                        f"order comes from {candidate}. The cards are the same; the "
-                                        "queue is not.")}
-        return None, {"event": None, "requested": event, "substituted": False, "cards": 0}
+            if not table:
+                continue
+            covered = len(wanted & set(table)) if wanted else len(table)
+            if best is None or covered > best:
+                best, chosen = covered, (candidate, table)
+        if chosen is None:
+            return None, missing
+        candidate, table = chosen
+        note = ""
+        if candidate != event:
+            note = (f"17Lands has no usable {event} table for {expansion}, so the order comes "
+                    f"from {candidate}. The cards are the same; the queue is not.")
+        if wanted and best is not None and best < len(wanted) / 2:
+            note = (note + " " if note else "") + (
+                f"{best} of {len(wanted)} cards in this pack carry a published rate. "
+                f"{expansion} is new enough that 17Lands has barely any data on it, and a "
+                "ranking built on the rest would be this app inventing numbers.")
+        return table, {"event": candidate, "requested": event, "substituted": candidate != event,
+                       "cards": len(table), "covered": best or 0, "of_pack": len(wanted),
+                       "note": note}
 
     def limited_sets(self) -> dict:
         return {"sets": self.limited.sets(), "formats": list(FORMATS), "credit": LIMITED_CREDIT}
