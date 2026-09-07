@@ -57,6 +57,7 @@ const state = {
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
+  signals: null,
   live: null, liveTimer: null, liveStamp: '', liveAll: false, grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
@@ -997,17 +998,30 @@ function wildcardBlock(report) {
   const cost = report.wildcards?.cost ?? {};
   const owned = state.summary?.inventory ?? {};
   const map = { common: ['commons', 'WildCardCommons'], uncommon: ['uncommons', 'WildCardUnCommons'], rare: ['rares', 'WildCardRares'], mythic: ['mythics', 'WildCardMythics'] };
+  // Two bounds, not a number: Arena stopped writing the collection, so the honest answer
+  // is what the list costs from nothing and what it costs after the copies the app has
+  // actually watched him register. The second is tight for a list built out of cards he
+  // already plays, which is the case that matters when tuning a deck.
+  const net = report.wildcards?.net ?? cost;
   const grid = element('div', 'wildcards');
   Object.entries(map).forEach(([key, [label, inventoryKey]]) => {
     const need = cost[key] ?? 0;
+    const owe = net[key] ?? need;
     const held = owned[inventoryKey];
-    const card = element('article', `wildcard${typeof held === 'number' && held < need ? ' short' : ''}`);
-    card.append(element('strong', null, String(need)), element('span', null, label));
+    const card = element('article', `wildcard${typeof held === 'number' && held < owe ? ' short' : ''}`);
+    card.append(element('strong', null, owe === need ? String(need) : `${owe}–${need}`),
+                element('span', null, label));
     card.append(element('small', null, typeof held === 'number' ? `you hold ${held}` : 'stock not read'));
     grid.append(card);
   });
   box.append(grid);
-  box.append(element('small', null, 'Cost of the whole list. Arena stopped publishing the collection in the log, so the app cannot know which copies you already own.'));
+  const proven = report.wildcards?.proven_owned ?? 0;
+  if (proven) {
+    box.append(element('p', null,
+      `The log has watched you register ${proven} of these copies already, so the lower figure is what you would still spend.`));
+  }
+  box.append(element('small', null, report.wildcards?.note
+    ?? 'Cost of the whole list. Arena stopped publishing the collection in the log.'));
   return box;
 }
 
@@ -1284,7 +1298,14 @@ function renderListAnalysis(target, payload) {
       `${item.colour} ×${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources${item.shortfall ? ` — ${item.shortfall} short (${item.driver})` : ' — met'}`));
   });
   const cost = report.wildcards?.cost ?? {};
-  target.append(element('p', null, `Wildcards: ${cost.common ?? 0} common · ${cost.uncommon ?? 0} uncommon · ${cost.rare ?? 0} rare · ${cost.mythic ?? 0} mythic.`));
+  const net = report.wildcards?.net ?? cost;
+  const span = (key) => (net[key] ?? 0) === (cost[key] ?? 0)
+    ? String(cost[key] ?? 0) : `${net[key] ?? 0}–${cost[key] ?? 0}`;
+  target.append(element('p', null,
+    `Wildcards: ${span('common')} common · ${span('uncommon')} uncommon · ${span('rare')} rare · ${span('mythic')} mythic.`));
+  if (report.wildcards?.proven_owned) {
+    target.append(element('small', null, report.wildcards.note));
+  }
   target.append(element('small', null, payload.note));
 }
 
@@ -1485,6 +1506,7 @@ function renderDraft() {
     target.append(packGrid(draft.advice, draft.pack_cards ?? []));
   }
   target.append(poolBlock(draft));
+  target.append(signalsBlock());
   target.append(deckBlock());
   target.append(reviewBlock());
   target.append(gradeBlock(draft));
@@ -1732,6 +1754,106 @@ function renderDeck(stage, deck) {
   stage.append(copy);
   stage.append(element('small', null,
     'This decides the mechanical part only — the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
+}
+
+// The one piece of draft advice that needs no outside data: counting the packs that
+// reached him. It survives on a set nobody measures, which is where the app is most of
+// the time, and it happens to be the skill a new drafter is missing.
+function signalsBlock() {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'What the packs were passing'));
+  box.append(element('p', 'subtle',
+    'Counted from your own packs, from the fifth pick of each one. Nothing here comes from anybody else’s data.'));
+  const action = element('button', 'button secondary', state.signals ? 'Count again' : 'Read the signals');
+  action.type = 'button';
+  action.addEventListener('click', () => loadSignals(box));
+  box.append(action);
+  const stage = element('div', 'signals-stage');
+  box.append(stage);
+  if (state.signals) renderSignals(stage, state.signals);
+  return box;
+}
+
+async function loadSignals(box) {
+  const stage = box.querySelector('.signals-stage');
+  stage.replaceChildren(element('p', 'subtle', 'Counting…'));
+  try {
+    state.signals = await request('/api/draft/signals');
+    Object.assign(state.cards, state.signals.cards ?? {});
+    renderSignals(stage, state.signals);
+  } catch (error) { stage.replaceChildren(element('p', 'gap', error.message)); }
+}
+
+function renderSignals(stage, data) {
+  stage.replaceChildren();
+  if (!data.packs?.length) {
+    stage.append(element('p', 'subtle', data.reason ?? 'Nothing to count.'));
+    return;
+  }
+  if (data.lane?.length) {
+    const lane = element('p', null, 'You ended in ');
+    lane.append(colourPips(data.lane));
+    stage.append(lane);
+  }
+
+  data.packs.forEach((pack) => {
+    const box = element('article', 'signal-pack');
+    box.append(element('h4', null, `Pack ${pack.pack}`));
+    box.append(element('p', pack.enough ? null : 'gap', pack.reading));
+    if (!pack.enough) { stage.append(box); return; }
+    const rows = element('div', 'signal-rows');
+    // The bar length is the signal itself — how far the colour ran above or below its own
+    // baseline — because a bar showing the share invites the eye to compare shares, and a
+    // colour the set simply prints more of would then look like the open one.
+    const reach = Math.max(...pack.colours.map((item) => Math.abs(item.delta)), 0.02);
+    pack.colours.forEach((item) => {
+      const row = element('div', 'signal-row');
+      const name = element('span', 'signal-name', '');
+      name.append(colourPips([item.colour]));
+      name.append(document.createTextNode(` ${item.seen}`));
+      name.title = `${item.seen} of the late cards were ${item.name}`;
+      row.append(name);
+      const track = element('div', 'signal-track');
+      track.append(element('div', 'signal-zero'));
+      const fill = element('div', `signal-fill${item.delta >= 0.1 ? ' strong' : item.delta >= 0.05 ? ' mild' : item.delta < 0 ? ' under' : ''}`);
+      const size = Math.round((Math.abs(item.delta) / reach) * 50);
+      fill.style.width = `${size}%`;
+      fill.style.left = item.delta >= 0 ? '50%' : `${50 - size}%`;
+      fill.title = `${percent(item.share)} of the late cards, against ${percent(item.baseline)} of the draft`;
+      track.append(fill);
+      row.append(track);
+      row.append(element('span', `signal-delta${item.delta > 0 ? ' up' : ''}`,
+        `${item.delta > 0 ? '+' : ''}${(item.delta * 100).toFixed(1)}`));
+      rows.append(row);
+    });
+    box.append(rows);
+    box.append(element('small', null,
+      'Each bar is how far that colour ran above (right) or below (left) its share of this draft. The number beside it is that gap in points.'));
+    stage.append(box);
+  });
+
+  const lane = new Set(data.lane ?? []);
+  const mine = (data.wheeled ?? []).filter((item) => item.colours.some((colour) => lane.has(colour)));
+  if (mine.length) {
+    const box = element('article', 'signal-pack');
+    box.append(element('h4', null, `Came back around in your colours · ${mine.length}`));
+    box.append(element('p', 'subtle',
+      'You passed these and they were still there eight picks later. Nobody between you and the pack wanted them.'));
+    const list = element('div', 'pool-list');
+    mine.slice(0, 14).forEach((item) => {
+      const entry = element('button', 'pool-card', '');
+      entry.type = 'button';
+      entry.append(element('strong', null, item.name));
+      entry.append(element('span', null, `P${item.pack} · ${item.first_seen}→${item.came_back}`));
+      entry.addEventListener('click', () => inspectCard(item.card_id));
+      list.append(entry);
+    });
+    box.append(list);
+    stage.append(box);
+  }
+
+  if (data.bot_draft) stage.append(element('p', 'gap', data.bot_caveat));
+  stage.append(element('small', null, data.note));
 }
 
 // The record of the draft, pick by pick. Whether it carries a second opinion depends on

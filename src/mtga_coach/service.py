@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, build, coach, economy, pick, timeline
+from . import analysis, build, coach, economy, pick, signals, timeline
 from .community import CommunityGrades
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
@@ -1025,6 +1025,30 @@ class CoachService:
                      "of what was in each pack and what left it — no second opinion, because the "
                      "app does not have one worth reading here."),
         }
+
+    def draft_signals(self) -> dict:
+        """What the packs were passing, counted from the packs that reached him.
+
+        This is the one part of draft advice that needs no external data at all: it is
+        arithmetic on his own packs. Which is why it survives on a set nobody measures,
+        where the card-quality ranking does not.
+        """
+        state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft()
+        if not state:
+            raise KeyError("no draft stored")
+        picks = [entry for entry in state.get("picks") or [] if entry.get("pack_cards")]
+        if not picks:
+            return {"packs": [], "wheeled": [], "reason": (
+                "No pick was recorded with the pack it came from, so there is nothing to count.")}
+        ids = {int(cid) for entry in picks for cid in entry["pack_cards"]}
+        cards = {int(key): value for key, value in self.cards(sorted(ids)).items()}
+        answer = signals.read(picks, cards)
+        event = str(state.get("event_name") or "")
+        lane = pick.lane([cards.get(int(cid)) for cid in state.get("pool") or []])[0]
+        return {**answer, "lane": lane, "event_name": event,
+                "cards": {str(cid): card for cid, card in cards.items()},
+                "bot_draft": limited_format(event) == "QuickDraft",
+                "bot_caveat": signals.BOT_CAVEAT}
 
     def draft_deck(self) -> dict:
         """The pool turned into a registrable deck, with the pairs that lost.

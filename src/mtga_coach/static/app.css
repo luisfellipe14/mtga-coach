@@ -387,3 +387,19 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .review-row .text-button { text-align: left; }
 .review-row small { color: var(--muted); display: block; font-size: .72rem; }
 .review-lane { opacity: .7; }
+
+.signals-stage { margin-top: .7rem; }
+.signal-pack { border-top: 1px solid rgba(255,255,255,.08); margin-top: .9rem; padding-top: .7rem; }
+.signal-pack h4 { margin: 0 0 .3rem; }
+.signal-pack p { font-size: .86rem; line-height: 1.5; margin: .2rem 0 .5rem; max-width: 46rem; }
+.signal-rows { display: grid; gap: .28rem; max-width: 34rem; }
+.signal-row { align-items: center; display: grid; gap: .6rem; grid-template-columns: 3.4rem 1fr 3rem; }
+.signal-name { font-size: .8rem; white-space: nowrap; }
+.signal-track { background: rgba(255,255,255,.05); height: 12px; position: relative; }
+.signal-fill { background: rgba(255,255,255,.18); height: 100%; position: absolute; top: 0; }
+.signal-fill.mild { background: rgba(216,189,127,.55); }
+.signal-fill.strong { background: var(--gold); }
+.signal-fill.under { background: rgba(255,255,255,.10); }
+.signal-zero { background: rgba(255,255,255,.28); bottom: -2px; left: 50%; position: absolute; top: -2px; width: 1px; }
+.signal-delta { color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; text-align: right; }
+.signal-delta.up { color: var(--gold); }
