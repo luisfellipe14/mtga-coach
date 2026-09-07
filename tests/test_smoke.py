@@ -8,8 +8,11 @@ import unittest
 class LaunchTests(unittest.TestCase):
     def test_loopback_launch_serves_summary(self):
         run = Path(__file__).resolve().parents[1] / 'run.py'
+        # Generous on purpose: this asserts that the app launches and serves, not how
+        # fast it does it. Starting a fresh interpreter while the machine is busy
+        # following an eighty-megabyte log took longer than fifteen seconds.
         result = subprocess.run([sys.executable, str(run), '--smoke'],
-                                capture_output=True, text=True, timeout=15)
+                                capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('local server and API verified', result.stdout)
 
@@ -32,6 +35,6 @@ class SecondInstanceTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 server.server_close()
-                thread.join(timeout=5)
+                thread.join(timeout=30)
                 service.store.close()
             self.assertFalse(already_running("127.0.0.1", server.server_port))

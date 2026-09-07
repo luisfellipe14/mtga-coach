@@ -21,6 +21,15 @@ built on the log the client already writes on your machine. It runs entirely on
   cost, and win rate per card in hand with the confidence interval beside it.
 - **Imports and exports decklists** in Arena's own format, so a list goes straight back into
   the client, and any list you paste gets the same analysis before you build it.
+- **Reads what the packs were passing.** Of the cards still sitting in a pack by the fifth
+  pick, how many were red — more than the packs carried on average? Then red was going
+  round. It also names the cards that came back to you a full eight picks later, which is
+  the most direct evidence there is that nobody between you and the pack wanted them. This
+  is arithmetic on your own packs: no outside data, so it works on a set nobody has
+  measured yet.
+- **Tells you what each pair of colours is for in the set**, read from the card database
+  Arena installed on your machine. Complete on release day, offline, and it makes no claim
+  about which cards are good — only what a pair is built around.
 - **Reads the draft while you draft it.** The pack on screen is ranked by the 17Lands
   win rate, adjusted for the colours your pool has already paid for, with the reason under
   every card. It then builds the 40 — the pair, the twenty-three, and a mana base for the
