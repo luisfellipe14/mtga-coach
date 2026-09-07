@@ -113,6 +113,10 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, service.draft_deck_export())
         elif path == "/api/draft/export":
             self._send(HTTPStatus.OK, service.draft_pool_export())
+        elif path == "/api/community":
+            self._send(HTTPStatus.OK, service.community_grades(query.get("set", [""])[0]))
+        elif path == "/api/community/export":
+            self._send(HTTPStatus.OK, service.export_grades(query.get("set", [""])[0]))
         elif path == "/api/limited":
             self._send(HTTPStatus.OK, service.limited_sets())
         elif path == "/api/rank":
@@ -120,6 +124,8 @@ class _Handler(BaseHTTPRequestHandler):
                 str(query.get("track", ["constructed"])[0])))
         elif path == "/api/matchups":
             self._send(HTTPStatus.OK, service.matchups())
+        elif path == "/api/live":
+            self._send(HTTPStatus.OK, service.live_game())
         elif path == "/api/economy":
             self._send(HTTPStatus.OK, service.economy())
         elif path == "/api/wallet":
@@ -242,6 +248,8 @@ class _Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/rulings":
                 self._send(HTTPStatus.OK, self.coach_service.set_rulings(
                     bool(self._json(body).get("enabled"))))
+            elif parsed.path == "/api/community/grade":
+                self._send(HTTPStatus.CREATED, self.coach_service.save_grade(self._json(body)))
             elif parsed.path == "/api/limited/fetch":
                 payload = self._json(body)
                 self._send(HTTPStatus.OK, self.coach_service.fetch_limited(

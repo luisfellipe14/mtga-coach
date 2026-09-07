@@ -33,6 +33,11 @@ EXPENSIVE_FROM = 5
 MIN_PLAYABLES = 14
 COLOURS = "WUBRG"
 
+COMMUNITY_NOTE = (
+    "No published win rate covers this set yet, so the order below uses the grades written "
+    "on this machine. Those are opinions with a name on them, and they are replaced by the "
+    "measurement the moment 17Lands has one.")
+
 STRUCTURAL_NOTE = (
     "No published win rate covers this set yet, so the order below is read off the cards "
     "themselves: removal, bodies, card draw, curve. It can tell a removal spell from a "
@@ -130,7 +135,14 @@ def _rated_score(card, row):
 RATINGS_COVERAGE = 0.6
 
 
-def playables(pool_ids, cards, ratings=None):
+def _grade_score(row):
+    """A community grade on the same 0-10 axis. The scale is 0-5, so it doubles."""
+    if not row or row.get("grade") is None:
+        return None
+    return round(float(row["grade"]) * 2, 2)
+
+
+def playables(pool_ids, cards, ratings=None, grades=None):
     """Every distinct card in the pool with a score, on one scale, and why it got it.
 
     The scale is chosen once for the whole pool. A ranking where two cards were measured
@@ -141,6 +153,8 @@ def playables(pool_ids, cards, ratings=None):
     covered = sum(1 for cid in spells
                   if _rated_score(cards.get(cid) or {}, (ratings or {}).get(cid)) is not None)
     measured = bool(spells) and covered / len(spells) >= RATINGS_COVERAGE
+    graded = 0 if measured else sum(1 for cid in spells if _grade_score((grades or {}).get(cid)))
+    opinion = not measured and bool(spells) and graded / len(spells) >= RATINGS_COVERAGE
     seen = {}
     for cid in pool_ids:
         cid = int(cid)
@@ -150,6 +164,8 @@ def playables(pool_ids, cards, ratings=None):
             entry["quantity"] += 1
             continue
         rated = _rated_score(card, (ratings or {}).get(cid)) if measured else None
+        if rated is None and opinion:
+            rated = _grade_score((grades or {}).get(cid))
         structural, reasons = structural_score(card)
         seen[cid] = {
             "card_id": cid, "name": card.get("name") or f"#{cid}", "quantity": 1,
@@ -157,11 +173,13 @@ def playables(pool_ids, cards, ratings=None):
             "colours": [] if card.get("is_land") else list(card.get("colors") or []),
             "mana_value": card.get("mana_value"),
             "score": rated if rated is not None else structural,
-            "basis": "17lands" if rated is not None else "structure",
+            "basis": ("17lands" if measured and rated is not None else
+                      "community" if rated is not None else "structure"),
             "why": reasons,
         }
     entries = list(seen.values())
-    return entries, {"measured": measured, "covered": covered, "of_pool": len(spells)}
+    return entries, {"measured": measured, "covered": covered, "of_pool": len(spells),
+                     "opinion": opinion, "graded": graded}
 
 
 def _fits(entry, pair):
@@ -208,14 +226,14 @@ def _land_split(chosen, pair, pool_lands, total=LIMITED_LANDS):
     return {"basics": split, "nonbasic": duals, "total": total}
 
 
-def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"]):
+def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades=None):
     """A registrable deck out of the pool, plus the colour pairs that lost and by how much.
 
     Only the mechanical part is decided here. The archetype, the trap rare and the card
     that is only good against one opponent are left to the player, and the alternatives
     are shown with their totals so the choice stays theirs.
     """
-    entries, coverage = playables(pool_ids, cards, ratings)
+    entries, coverage = playables(pool_ids, cards, ratings, grades)
     pool_lands = [entry for entry in entries if entry["is_land"]]
     lands = size - round(size * (SPELLS / DECK_MINIMUMS["limited"]))
     spells_wanted = size - lands
@@ -242,7 +260,8 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"]):
     best = scored[0]
     split = _land_split(best["chosen"], best["pair"], pool_lands, lands)
     deck_entries = _deck_entries(best["chosen"], split, cards)
-    basis = "17lands" if coverage["measured"] else "structure"
+    basis = ("17lands" if coverage["measured"] else
+             "community" if coverage["opinion"] else "structure")
     return {
         "pair": best["pair"], "total": best["total"], "size": size, "lands": lands,
         "spells": [
@@ -266,7 +285,8 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"]):
              {item["card_id"] for item in best["chosen"]}),
             key=lambda item: -item["score"])[:12],
         "basis": basis,
-        "note": STRUCTURAL_NOTE if basis == "structure" else "",
+        "note": (STRUCTURAL_NOTE if basis == "structure" else
+                 COMMUNITY_NOTE if basis == "community" else ""),
     }
 
 

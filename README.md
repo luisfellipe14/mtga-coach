@@ -27,6 +27,18 @@ built on the log the client already writes on your machine. It runs entirely on
   pips those cards actually demand — and shows the colour pairs that lost, with their
   totals, so the choice stays yours. It also keeps every pick with the pack it came from,
   which is the part worth rereading after the draft.
+- **Shows the library while you play**: what is left in your own deck, the chance of each
+  card on the next draw and within three. It is a panel beside the game, not an overlay on
+  it, and it lags the game by the follower's polling interval.
+- **Tracks the climb**: rank read from the log the same way the wallet is, so the curve
+  starts when the app started looking and never claims to be a full history.
+- **Counts the matchups** by the colours the opponent actually showed, with the interval
+  next to every rate and the games that showed too little named rather than folded in.
+- **Answers whether a draft pays for itself** at the rate you win limited games. The
+  break-even rate falls out of the published prize structure alone: 45.7% for Quick Draft,
+  40.2% for Premier, 50.0% exactly for Traditional.
+- **Lets you grade cards** for a set nobody has data on yet, and exports them as the file a
+  pull request to `community/` expects.
 - **Keeps your notes and hypotheses** per position and per deck.
 - **Optionally fetches card art and card rulings** from Scryfall, and can hand a position to
   an assistant. Everything above works offline with none of that switched on.

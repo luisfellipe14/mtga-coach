@@ -337,3 +337,22 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .economy-cell span { color: var(--muted); font-size: .8rem; }
 .economy-cell small { color: var(--muted); display: block; font-size: .7rem; }
 .economy-cell .mine-label { color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }
+
+.live-panel { background: linear-gradient(120deg, rgba(45,160,110,.10), transparent 60%); border-left: 3px solid var(--jade); margin-bottom: 1.4rem; padding: .9rem 1.1rem; }
+.live-panel[hidden] { display: none !important; }
+.live-head { align-items: center; display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .5rem; }
+.live-head span:last-child { color: var(--muted); font-size: .82rem; }
+.live-list { display: grid; gap: .3rem .8rem; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); margin: .6rem 0; }
+.live-row { align-items: baseline; display: flex; gap: .5rem; justify-content: space-between; }
+.live-row span { color: var(--jade); font-size: .78rem; }
+.live-row small { color: var(--muted); font-size: .72rem; }
+.grade-list { display: grid; gap: .35rem; margin: .7rem 0; }
+.grade-row { align-items: center; display: grid; gap: .5rem; grid-template-columns: minmax(140px, 1fr) 74px minmax(160px, 2fr); }
+.grade-row.graded { border-left: 2px solid var(--gold); padding-left: .4rem; }
+.grade-row select, .grade-row input, .deck-section > input {
+  background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 3px;
+  color: var(--ink); font-size: .8rem; padding: .3rem .45rem; width: 100%;
+}
+.deck-section > input { margin: .4rem 0; max-width: 26rem; }
+.grade-list { max-height: 24rem; overflow-y: auto; padding-right: .4rem; }
+.grade-row .text-button { text-align: left; }

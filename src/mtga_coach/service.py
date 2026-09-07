@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import analysis, build, coach, economy, pick, timeline
+from .community import CommunityGrades
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
@@ -94,6 +95,12 @@ def _default_data_dir() -> Path:
     return default_data_dir()
 
 
+def community_scale() -> str:
+    from .community import SCALE
+
+    return SCALE
+
+
 def limited_format(event_name: str) -> str:
     """Which 17Lands table describes this event.
 
@@ -134,6 +141,7 @@ class CoachService:
         self.art = ArtCache(self.data_dir)
         self.rulings = RulingsCache(self.data_dir)
         self.limited = LimitedRatings(self.data_dir)
+        self.community = CommunityGrades(self.data_dir)
         self.keys = KeyStore(self.data_dir)
         # The catalogue is a read-only file that never changes while the app runs, so a
         # resolved card can be kept; the summary asks for the same ids on every call.
@@ -450,6 +458,42 @@ class CoachService:
                 "matches_report": reported is None or reported == size,
                 "lands": lands, "land_ratio": lands / size if size else None,
                 "entries": entries, "seen": len(deck_counts) - len(remaining)}
+
+    def live_game(self) -> dict:
+        """The game being played right now, with what is left in the library.
+
+        This is the same arithmetic the replay shows, asked of the newest frame instead of
+        a chosen one. It is a panel beside the game, not an overlay on it: the app reads a
+        log and draws in a browser window, and it will never sit on top of Arena.
+        """
+        if self.watcher is None or not self.watcher.status().get("running"):
+            return {"live": False, "reason": (
+                "Not following. Turn Follow matches on and the panel updates while you play.")}
+        games = [game for game in self.store.games()
+                 if game.get("status") != "complete" and game.get("frame_count")]
+        if not games:
+            return {"live": True, "playing": False, "reason": (
+                "Following, but no game is in progress. The panel fills in on the first turn.")}
+        game = max(games, key=lambda item: (str(item.get("started_at") or ""), item.get("id")))
+        index = self.store.frame_index(str(game["id"]))
+        if not index:
+            return {"live": True, "playing": False, "reason": "No frame recorded for this game yet."}
+        last = index[-1]
+        library = self.library_state(str(game["id"]), int(last["index"]))
+        frame = self.store.frame(str(game["id"]), int(last["index"])) or {}
+        seat = game.get("self_seat")
+        players = [{"seat": player.get("seat"), "life": player.get("life"),
+                    "is_self": player.get("seat") == seat}
+                   for player in frame.get("players", []) if isinstance(player, dict)]
+        return {"live": True, "playing": True, "game_id": game["id"],
+                "deck_label": self._deck_label(str(game.get("deck_id", ""))),
+                "turn": frame.get("turn"), "phase": frame.get("phase"), "step": frame.get("step"),
+                "frame": int(last["index"]), "frames": len(index),
+                "opponent_name": game.get("opponent_name"), "players": players,
+                "library": library,
+                "note": ("Read from the log as Arena writes it, so it lags the game by up to "
+                         "the follower's polling interval. The library is exact for your own "
+                         "deck and is never computed for the opponent.")}
 
     def opponent_profile(self, game_id: str) -> dict:
         """Everything the opponent showed, with no archetype guessed on top of it."""
@@ -875,7 +919,8 @@ class CoachService:
         expansion = self._draft_set([], pool_ids, cards)
         event = limited_format(state.get("event_name") or "")
         ratings, table = self._ratings_for(expansion, event, pool_ids)
-        answer = build.suggest(pool_ids, cards, ratings)
+        answer = build.suggest(pool_ids, cards, ratings,
+                               grades=self.community.grades(expansion) if expansion else None)
         deck_ids = [item["card_id"] for item in answer.get("spells") or []]
         return {**answer, "expansion": expansion, "table": table,
                 "cards": {str(cid): cards[cid] for cid in set(pool_ids + deck_ids) if cid in cards},
@@ -953,6 +998,29 @@ class CoachService:
         return table, {"event": candidate, "requested": event, "substituted": candidate != event,
                        "cards": len(table), "covered": best or 0, "of_pack": len(wanted),
                        "note": note}
+
+    def community_grades(self, expansion: str = "") -> dict:
+        """Grades written on this machine, with the pool they were written about."""
+        expansion = str(expansion or "").strip().upper()
+        if not expansion:
+            state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft() or {}
+            pool = [int(cid) for cid in state.get("pool") or []]
+            expansion = self._draft_set([], pool, {int(k): v for k, v in self.cards(pool).items()})
+        grades = self.community.grades(expansion) if expansion else {}
+        return {"expansion": expansion, "grades": {str(k): v for k, v in grades.items()},
+                "sets": self.community.sets(), "scale": community_scale(),
+                "note": ("A grade is one person's opinion with their name on it. It never "
+                         "overrides a measured win rate — it fills the fortnight after a set "
+                         "releases, when no measurement exists yet.")}
+
+    def save_grade(self, payload: dict) -> dict:
+        entry = self.community.save(payload.get("expansion", ""), payload.get("card_id", 0),
+                                    payload.get("grade", 0), payload.get("note", ""),
+                                    payload.get("by", ""))
+        return {"saved": True, "entry": entry}
+
+    def export_grades(self, expansion: str) -> dict:
+        return self.community.export(expansion)
 
     def limited_sets(self) -> dict:
         return {"sets": self.limited.sets(), "formats": list(FORMATS), "credit": LIMITED_CREDIT}

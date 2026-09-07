@@ -57,6 +57,7 @@ const state = {
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false,
+  live: null, liveTimer: null, liveStamp: '', grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -1341,6 +1342,61 @@ async function loadWallet() {
   } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
 }
 
+// ---------------------------------------------------------------- live game
+
+// A panel beside the game, never on top of it: this app reads a log and draws in a browser
+// window. It lags the game by the follower's polling interval and says so.
+const LIVE_POLL_MS = 3000;
+
+async function loadLive() {
+  const panel = $('#live-panel');
+  if (!panel) return;
+  try {
+    const live = await request('/api/live');
+    const stamp = `${live.game_id ?? ''}|${live.frame ?? ''}|${live.playing}`;
+    if (stamp === state.liveStamp) return;
+    state.liveStamp = stamp;
+    state.live = live;
+    renderLive(panel, live);
+  } catch { panel.hidden = true; }
+}
+
+function renderLive(panel, live) {
+  if (!live.live || !live.playing) { panel.hidden = true; return; }
+  panel.hidden = false;
+  panel.replaceChildren();
+  const head = element('div', 'live-head');
+  head.append(element('span', 'live-badge on', 'PLAYING'));
+  const lives = (live.players ?? []).map((player) => `${player.is_self ? 'you' : 'them'} ${player.life}`).join(' · ');
+  head.append(element('strong', null, `${live.deck_label || 'Composition'} · turn ${live.turn ?? '—'}`));
+  head.append(element('span', null, `${listText([live.phase, live.step])}${lives ? ` · ${lives}` : ''}`));
+  panel.append(head);
+
+  const library = live.library ?? {};
+  if (!library.eligible) {
+    panel.append(element('p', 'subtle', library.reason || 'The library cannot be counted for this game.'));
+    return;
+  }
+  panel.append(element('p', null,
+    `${library.size} cards left · ${library.lands} lands (${percent(library.land_ratio)})`
+    + (library.matches_report ? '' : ' · disagrees with the count the log reports')));
+  const list = element('div', 'live-list');
+  (library.entries ?? []).slice(0, 14).forEach((entry) => {
+    const row = element('div', 'live-row');
+    row.append(element('strong', null, `${entry.quantity}× ${entry.name}`));
+    row.append(element('span', null, `${percent(entry.next_draw)} next`));
+    row.append(element('small', null, `${percent(entry.within_three)} in three`));
+    list.append(row);
+  });
+  panel.append(list);
+  panel.append(element('small', null, live.note));
+}
+
+function livePolling(on) {
+  if (state.liveTimer) { clearInterval(state.liveTimer); state.liveTimer = null; }
+  if (on) { loadLive(); state.liveTimer = setInterval(loadLive, LIVE_POLL_MS); }
+}
+
 // ---------------------------------------------------------------- draft
 
 // The draft is the one screen that has to keep up with the game: a pick has a timer on it.
@@ -1357,6 +1413,7 @@ async function loadDraft() {
     state.draft = draft;
     Object.assign(state.cards, draft.cards ?? {});
     warmArt((draft.pack_cards ?? []).concat(draft.pool ?? []));
+    if (draft.expansion && draft.expansion !== state.gradeSet) await loadGrades(draft.expansion);
     renderDraft();
   } catch (error) {
     if (!state.draft) empty($('#draft-body'), 'The draft could not be read.', error.message);
@@ -1393,6 +1450,7 @@ function renderDraft() {
   }
   target.append(poolBlock(draft));
   target.append(deckBlock());
+  target.append(gradeBlock(draft));
   target.append(element('small', 'draft-credit', draft.credit));
 }
 
@@ -1637,6 +1695,87 @@ function renderDeck(stage, deck) {
   stage.append(copy);
   stage.append(element('small', null,
     'This decides the mechanical part only — the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
+}
+
+// The write end of the open data. A grade stays on this machine until its author decides
+// to send it, and what leaves is a file anyone can read, fork or ignore.
+function gradeBlock(draft) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'Grade the cards'));
+  if (!draft.expansion) {
+    box.append(element('p', 'subtle', 'The set could not be read from the pool, so a grade would have nowhere to go.'));
+    return box;
+  }
+  box.append(element('p', 'subtle',
+    `${draft.expansion} · 0.0 to 5.0. 3.0 is a card you are happy to maindeck; 2.0 is filler; 4.0 and up wins games on its own. Grades are used only while 17Lands has no number for the set, and are replaced the moment it does.`));
+  const handle = document.createElement('input');
+  handle.placeholder = 'your handle, optional — it travels into the public file';
+  handle.maxLength = 32;
+  handle.value = state.handle;
+  handle.addEventListener('change', () => { state.handle = handle.value.trim(); });
+  box.append(handle);
+  const list = element('div', 'grade-list');
+  const seen = new Set();
+  [...(draft.pack_cards ?? []), ...(draft.pool ?? [])].forEach((id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    list.append(gradeRow(draft.expansion, id));
+  });
+  box.append(list);
+  const send = element('button', 'button secondary', 'Copy the file for a pull request');
+  send.type = 'button';
+  send.addEventListener('click', async () => {
+    try {
+      const payload = await request(`/api/community/export?set=${encodeURIComponent(draft.expansion)}`);
+      await navigator.clipboard.writeText(payload.text);
+      setMessage(`${payload.cards} grade(s) copied. Paste into ${payload.filename} and open a pull request.`);
+    } catch (error) { setMessage(`Nothing to export: ${error.message}`, 'error'); }
+  });
+  box.append(send);
+  return box;
+}
+
+function gradeRow(expansion, cardId) {
+  const row = element('div', 'grade-row');
+  const name = element('button', 'text-button', cardName(cardId));
+  name.type = 'button';
+  name.addEventListener('click', () => inspectCard(cardId));
+  row.append(name);
+  const select = document.createElement('select');
+  select.append(new Option('—', ''));
+  for (let value = 0; value <= 50; value += 5) {
+    select.append(new Option((value / 10).toFixed(1), (value / 10).toFixed(1)));
+  }
+  const current = state.grades[String(cardId)];
+  if (current) select.value = Number(current.grade).toFixed(1);
+  const note = document.createElement('input');
+  note.placeholder = 'why, in one line';
+  note.maxLength = 400;
+  if (current?.note) note.value = current.note;
+  const store = async () => {
+    if (!select.value) return;
+    try {
+      const answer = await postJson('/api/community/grade', {
+        expansion, card_id: cardId, grade: Number(select.value),
+        note: note.value.trim(), by: state.handle,
+      });
+      state.grades[String(cardId)] = answer.entry;
+      row.classList.add('graded');
+    } catch (error) { setMessage(`The grade was not saved: ${error.message}`, 'error'); }
+  };
+  select.addEventListener('change', store);
+  note.addEventListener('change', store);
+  if (current) row.classList.add('graded');
+  row.append(select, note);
+  return row;
+}
+
+async function loadGrades(expansion) {
+  try {
+    const payload = await request(`/api/community?set=${encodeURIComponent(expansion || '')}`);
+    state.grades = payload.grades ?? {};
+    state.gradeSet = payload.expansion || '';
+  } catch { state.grades = {}; }
 }
 
 function draftDiagnostics(diagnostics) {
@@ -1938,6 +2077,13 @@ function boot() {
   // The dot in the sidebar is what tells him a pack is on screen while he is on another
   // tab, so the draft is checked on a slow beat even when its view is closed.
   setInterval(() => { if (state.summary?.capture?.running && !state.draftTimer) loadDraft(); }, 10000);
+  livePolling(true);
 }
 
-if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', boot);
+// A module script can finish executing after DOMContentLoaded has already fired, and then
+// the listener never runs and nothing on the page responds. Binding only while the document
+// is still parsing, and booting straight away otherwise, removes that race.
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+}
