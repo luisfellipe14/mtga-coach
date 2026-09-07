@@ -1,10 +1,10 @@
 {
   "status": "discovery_only_not_replay_validation",
   "captured_at": "2026-09-06T13:41:38.771433+00:00",
-  "source_path": "C:\\Users\\l_fel\\AppData\\LocalLow\\Wizards Of The Coast\\MTGA\\Player.log",
+  "source_path": "C:\\Users\\<user>\\AppData\\LocalLow\\Wizards Of The Coast\\MTGA\\Player.log",
   "source_bytes": 9705971,
   "source_sha256": "0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7",
-  "private_archive_path": "C:\\Users\\l_fel\\AppData\\Local\\mtga-coach\\sources\\0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7.log",
+  "private_archive_path": "C:\\Users\\<user>\\AppData\\Local\\mtga-coach\\sources\\0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7.log",
   "parsed_json_roots": 2265,
   "state_record_total": 1047,
   "games": [

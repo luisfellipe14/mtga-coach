@@ -21,6 +21,12 @@ built on the log the client already writes on your machine. It runs entirely on
   cost, and win rate per card in hand with the confidence interval beside it.
 - **Imports and exports decklists** in Arena's own format, so a list goes straight back into
   the client, and any list you paste gets the same analysis before you build it.
+- **Reads the draft while you draft it.** The pack on screen is ranked by the 17Lands
+  win rate, adjusted for the colours your pool has already paid for, with the reason under
+  every card. It then builds the 40 — the pair, the twenty-three, and a mana base for the
+  pips those cards actually demand — and shows the colour pairs that lost, with their
+  totals, so the choice stays yours. It also keeps every pick with the pack it came from,
+  which is the part worth rereading after the draft.
 - **Keeps your notes and hypotheses** per position and per deck.
 - **Optionally fetches card art and card rulings** from Scryfall, and can hand a position to
   an assistant. Everything above works offline with none of that switched on.
@@ -113,6 +119,21 @@ Both start switched off, and both are per-feature toggles in **Settings**.
   that is a shortcut, billed to you, at a fraction of a cent per reading. The key is encrypted
   locally and never written to the database or to git.
 
+## Open data, and why it is here
+
+A tracker is only as good as the numbers behind it, and on the day a set releases nobody
+has numbers. Seven days after *Secrets of Strixhaven* came out, 17Lands carried a
+published win rate for **9 of its 341 cards**. The apps that had an opinion on day one had
+it because they license a set review or collect from a user base big enough to produce
+data immediately — both fair, both closed.
+
+[`community/`](community/README.md) is the alternative: card grades under CC0, one file
+per set, keyed by Arena card id, contributed by pull request and usable by anyone,
+including a competing tracker. A grade is shown as an opinion, is signed by whoever wrote
+it, and is superseded the moment a measured win rate exists.
+
+Nothing in there is copied from anybody's paid review, and nothing ever will be.
+
 ## Known limits
 
 - **BO3 has not been checked against a real match.** The data model separates game from match
@@ -126,6 +147,15 @@ Both start switched off, and both are per-feature toggles in **Settings**.
   from separately shuffled copies of the deck, leaning toward the average land ratio, without
   publishing the weighting. Comparing a measured BO1 opening-hand rate to the hypergeometric
   baseline is wrong, and the app says so where it shows the number.
+- **The draft reader is validated on the bot draft only.** A quick draft has been captured
+  and read end to end; the dialect that human premier and traditional drafts write is
+  handled by the same shape-based reader but has not met a real one yet. If you draft
+  those, `%LOCALAPPDATA%\mtga-coach\draft-raw.jsonl` holds exactly what is needed to
+  confirm it — card ids and key names, nothing about your account.
+- **A new set has almost no public data.** The pack ranking needs 17Lands, and 17Lands
+  needs games to have been played. Until then the deck builder ranks by the cards' own
+  text, which can tell a removal spell from a lifegain spell and cannot tell a bomb from a
+  trap. It says which of the two it is doing, every time.
 - **A personal sample is small.** Telling 55% from 50% at 95% confidence and 80% power takes
   about 1,565 games per arm. The app shows the Wilson interval next to every rate precisely so
   that 20 games never look like a verdict.

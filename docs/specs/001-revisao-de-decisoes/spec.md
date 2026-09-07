@@ -14,7 +14,7 @@ O usuário aceita funções semelhantes às do Untapped e considera substituir a
 - Confirmado em 06/09: suporte obrigatório a BO1 e BO3; BO1 concentra a maior parte do uso e terá prioridade na experiência inicial. BO3 integra o modelo de dados desde a primeira entrega.
 - Observado: Arena instalado e ativo no Windows deste PC; o Player.log contém partidas de Historic_Ladder, composições de deck, mensagens de decisão e atualizações do estado.
 - Premissa de trabalho: Histórico como primeiro conjunto de testes, porque a amostra real já existe. O formato de cartas prioritário ainda não foi confirmado pelo usuário; essa premissa não exclui outros formatos.
-- Nome provisório: MTGA Coach. Documentos em `C:/Users/l_fel/Projects/mtga-coach`; dados privados em `%LOCALAPPDATA%/mtga-coach`.
+- Nome provisório: MTGA Coach. Documentos em `%USERPROFILE%/Projects/mtga-coach`; dados privados em `%LOCALAPPDATA%/mtga-coach`.
 
 ## 3. Opções de entrega
 

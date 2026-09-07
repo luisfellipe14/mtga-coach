@@ -8,7 +8,7 @@ Criar um app pessoal para revisar decisões e ajustar decks a partir dos logs do
 
 ## Amostra e evidência
 
-Fonte: `C:/Users/l_fel/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log`.
+Fonte: `%USERPROFILE%/AppData/LocalLow/Wizards Of The Coast/MTGA/Player.log`.
 
 Snapshot capturado às 13:41:38 UTC, com 9.705.971 bytes. SHA-256: `0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7`.
 

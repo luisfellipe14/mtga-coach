@@ -1,0 +1,9 @@
+{
+  "set": "SOS",
+  "set_name": "Secrets of Strixhaven",
+  "updated": "2026-09-07",
+  "scale": "0.0 to 5.0. 3.0 is a card you are happy to maindeck; 2.0 is filler; 4.0+ wins games on its own.",
+  "licence": "CC0-1.0",
+  "note": "17Lands published a win rate for 9 of this set's 341 cards on 2026-09-07. Until that catches up, this file is what the app has. Every grade is an opinion and is signed.",
+  "cards": {}
+}
