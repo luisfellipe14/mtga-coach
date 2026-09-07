@@ -1,0 +1,265 @@
+{
+  "status": "discovery_only_not_replay_validation",
+  "captured_at": "2026-09-06T13:41:38.771433+00:00",
+  "source_path": "C:\\Users\\l_fel\\AppData\\LocalLow\\Wizards Of The Coast\\MTGA\\Player.log",
+  "source_bytes": 9705971,
+  "source_sha256": "0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7",
+  "private_archive_path": "C:\\Users\\l_fel\\AppData\\Local\\mtga-coach\\sources\\0125891a07c661c85f663abaf46fb384cbc342f098642823aa967b7b8304f0f7.log",
+  "parsed_json_roots": 2265,
+  "state_record_total": 1047,
+  "games": [
+    {
+      "match_key": "fd45a990e0",
+      "game_number": 1,
+      "first_state_line": 242,
+      "last_state_line": 10650,
+      "state_records": 538,
+      "full_state_records": [
+        {
+          "line": 242,
+          "state_id": 1,
+          "stage": "GameStage_Start",
+          "turn": null
+        },
+        {
+          "line": 8758,
+          "state_id": 427,
+          "stage": "GameStage_Play",
+          "turn": 15
+        }
+      ],
+      "max_turn": 19,
+      "terminal_stage": "GameStage_GameOver",
+      "terminal_match_state": "MatchState_MatchComplete",
+      "decision_message_counts": {
+        "ClientMessageType_MulliganResp": 1,
+        "ClientMessageType_PerformActionResp": 76,
+        "ClientMessageType_DeclareBlockersResp": 2,
+        "ClientMessageType_SubmitBlockersReq": 3,
+        "ClientMessageType_OptionalActionResp": 3,
+        "ClientMessageType_DeclareAttackersResp": 3,
+        "ClientMessageType_SubmitAttackersReq": 3,
+        "ClientMessageType_EffectCostResp": 5,
+        "ClientMessageType_CastingTimeOptionsResp": 1,
+        "ClientMessageType_SelectTargetsResp": 6,
+        "ClientMessageType_SubmitTargetsReq": 6,
+        "ClientMessageType_SelectNResp": 2,
+        "ClientMessageType_CancelActionReq": 1,
+        "ClientMessageType_OrderResp": 1,
+        "ClientMessageType_ConcedeReq": 1
+      },
+      "fields": [
+        "actions",
+        "annotations",
+        "diffDeletedInstanceIds",
+        "diffDeletedPersistentAnnotationIds",
+        "gameInfo",
+        "gameObjects",
+        "gameStateId",
+        "pendingMessageCount",
+        "persistentAnnotations",
+        "players",
+        "prevGameStateId",
+        "teams",
+        "timers",
+        "turnInfo",
+        "type",
+        "update",
+        "zones"
+      ],
+      "unresolved_predecessors": [],
+      "predecessor_other_message_types": {},
+      "unique_state_ids": 538,
+      "event_metadata": [
+        {
+          "match_key": "fd45a990e0",
+          "line": 239,
+          "events": [
+            "Historic_Ladder"
+          ]
+        },
+        {
+          "match_key": "fd45a990e0",
+          "line": 10652,
+          "events": [
+            "Historic_Ladder"
+          ]
+        }
+      ]
+    },
+    {
+      "match_key": "e14289e494",
+      "game_number": 1,
+      "first_state_line": 10837,
+      "last_state_line": 17942,
+      "state_records": 416,
+      "full_state_records": [
+        {
+          "line": 10837,
+          "state_id": 1,
+          "stage": "GameStage_Start",
+          "turn": null
+        }
+      ],
+      "max_turn": 15,
+      "terminal_stage": "GameStage_GameOver",
+      "terminal_match_state": "MatchState_MatchComplete",
+      "decision_message_counts": {
+        "ClientMessageType_MulliganResp": 1,
+        "ClientMessageType_PerformActionResp": 26,
+        "ClientMessageType_SearchResp": 2,
+        "ClientMessageType_SelectTargetsResp": 3,
+        "ClientMessageType_SubmitTargetsReq": 4,
+        "ClientMessageType_SelectNResp": 2,
+        "ClientMessageType_OrderResp": 2,
+        "ClientMessageType_OptionalActionResp": 4,
+        "ClientMessageType_DeclareBlockersResp": 3,
+        "ClientMessageType_SubmitBlockersReq": 2,
+        "ClientMessageType_DeclareAttackersResp": 2,
+        "ClientMessageType_SubmitAttackersReq": 3,
+        "ClientMessageType_CastingTimeOptionsResp": 1
+      },
+      "fields": [
+        "actions",
+        "annotations",
+        "diffDeletedInstanceIds",
+        "diffDeletedPersistentAnnotationIds",
+        "gameInfo",
+        "gameObjects",
+        "gameStateId",
+        "pendingMessageCount",
+        "persistentAnnotations",
+        "players",
+        "prevGameStateId",
+        "teams",
+        "timers",
+        "turnInfo",
+        "type",
+        "update",
+        "zones"
+      ],
+      "unresolved_predecessors": [
+        {
+          "state_id": 31,
+          "previous_state_id": 30
+        },
+        {
+          "state_id": 139,
+          "previous_state_id": 138
+        }
+      ],
+      "predecessor_other_message_types": {
+        "30": [
+          "ClientMessageType_SearchResp",
+          "GREMessageType_TimerStateMessage"
+        ],
+        "138": [
+          "ClientMessageType_SearchResp",
+          "GREMessageType_TimerStateMessage"
+        ]
+      },
+      "unique_state_ids": 416,
+      "event_metadata": [
+        {
+          "match_key": "e14289e494",
+          "line": 10834,
+          "events": [
+            "Historic_Ladder"
+          ]
+        },
+        {
+          "match_key": "e14289e494",
+          "line": 17963,
+          "events": [
+            "Historic_Ladder"
+          ]
+        }
+      ]
+    },
+    {
+      "match_key": "0b03f0ddf7",
+      "game_number": 1,
+      "first_state_line": 18391,
+      "last_state_line": 19094,
+      "state_records": 93,
+      "full_state_records": [
+        {
+          "line": 18391,
+          "state_id": 1,
+          "stage": "GameStage_Start",
+          "turn": null
+        }
+      ],
+      "max_turn": 5,
+      "terminal_stage": "GameStage_Play",
+      "terminal_match_state": "MatchState_GameInProgress",
+      "decision_message_counts": {
+        "ClientMessageType_ChooseStartingPlayerResp": 1,
+        "ClientMessageType_MulliganResp": 1,
+        "ClientMessageType_PerformActionResp": 5,
+        "ClientMessageType_SelectTargetsResp": 1,
+        "ClientMessageType_SubmitTargetsReq": 1
+      },
+      "fields": [
+        "actions",
+        "annotations",
+        "diffDeletedInstanceIds",
+        "diffDeletedPersistentAnnotationIds",
+        "gameInfo",
+        "gameObjects",
+        "gameStateId",
+        "pendingMessageCount",
+        "persistentAnnotations",
+        "players",
+        "prevGameStateId",
+        "teams",
+        "timers",
+        "turnInfo",
+        "type",
+        "update",
+        "zones"
+      ],
+      "unresolved_predecessors": [],
+      "predecessor_other_message_types": {},
+      "unique_state_ids": 93,
+      "event_metadata": [
+        {
+          "match_key": "0b03f0ddf7",
+          "line": 18388,
+          "events": [
+            "Historic_Ladder"
+          ]
+        }
+      ]
+    }
+  ],
+  "deck_connections": [
+    {
+      "line": 242,
+      "main_count": 60,
+      "side_count": 1,
+      "main_distinct": 23,
+      "deck_hash": "d88f7590361aa5609283d3cf9c51f66e2271ab05a76c83197eae99c043eadb72"
+    },
+    {
+      "line": 10837,
+      "main_count": 60,
+      "side_count": 1,
+      "main_distinct": 23,
+      "deck_hash": "d88f7590361aa5609283d3cf9c51f66e2271ab05a76c83197eae99c043eadb72"
+    },
+    {
+      "line": 18391,
+      "main_count": 60,
+      "side_count": 0,
+      "main_distinct": 14,
+      "deck_hash": "d55df8fed0c0ab48c32c6eb1244359da90835d942ca1d12d202236910e00d7d5"
+    }
+  ],
+  "limitations": [
+    "No game-state reducer, visual replay or tactical engine was implemented or validated.",
+    "Missing predecessor references are investigation findings, not proven permanent data loss.",
+    "A source may contain credentials; the private source archive must never be published or sent wholesale to an AI API.",
+    "Counters show observed message types, not proven unique player decisions."
+  ]
+}
