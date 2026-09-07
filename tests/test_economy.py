@@ -66,8 +66,13 @@ class MeasuredPayoutTest(unittest.TestCase):
 
     def test_a_measured_row_moves_the_break_even_rate(self):
         typed = economy.break_even("QuickDraft")
-        poorer = economy.break_even("QuickDraft", measured={7: 0, 6: 0, 5: 0})
+        poorer = economy.break_even("QuickDraft", measured={7: 300, 6: 300, 5: 300})
         self.assertGreater(poorer, typed)
+
+    def test_an_event_that_can_never_pay_for_itself_has_no_break_even(self):
+        # Not zero and not an exception: there is no rate at which it comes back.
+        self.assertIsNone(economy.break_even(
+            "QuickDraft", measured={wins: 0 for wins in range(8)}))
 
     def test_a_measurement_equal_to_the_typed_row_changes_nothing(self):
         # This is the case that verifies the table instead of correcting it.
