@@ -8,3 +8,8 @@ __pycache__/
 data/
 artifacts/
 !tests/fixtures/*.log
+
+# Packaged build
+build/
+dist/
+*.spec.bak

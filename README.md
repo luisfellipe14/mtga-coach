@@ -30,17 +30,18 @@ probabilities to alternative lines. Nothing public can evaluate a Magic line wit
 guarantee — the game is Turing-complete, so no oracle exists. The app hands you a sanitised
 context and the numbers; the reading is yours.
 
-## Requirements
+## Install
 
-1. **Python 3.14** on the PATH. The app itself needs no third-party package.
-2. **Detailed logs enabled in Arena**: gear icon → *Adjust Options* → *View Account* → tick
-   **Detailed Logs (Plugin Support)** → restart the client. Without it the log carries no
-   protocol records at all. The Statistics screen tells you whether they are on.
-3. Only for the AI reading: `python -m pip install anthropic`, plus your own Anthropic API key.
+**One thing is required either way: detailed logs in Arena.** Gear icon → *Adjust Options*
+→ *View Account* → tick **Detailed Logs (Plugin Support)** → restart the client. Without it
+the log holds no protocol records and no tracker of any kind can read your games. The
+Statistics screen tells you whether they are on.
 
-## Running it
+**If you just want to use it.** Download `MTGA Coach.exe`, put it anywhere, double-click.
+It opens your browser at `http://127.0.0.1:18731`. No installer, no Python, no account. Keep
+the small console window open while you play; closing it stops the app.
 
-Double-click `Abrir MTGA Coach.cmd`, or:
+**If you want to run from source.** Python 3.14 on the PATH, then:
 
 ```
 python run.py                                   # http://127.0.0.1:18731
@@ -48,7 +49,17 @@ python run.py --import-current                  # import the configured log on s
 python run.py --smoke                           # quick server check
 ```
 
+Everything but the AI reading runs on the standard library alone. For that one feature:
+`python -m pip install anthropic` and your own Anthropic API key.
+
 The server binds to `127.0.0.1` only; any other address is refused at start-up.
+
+**Building the executable yourself:**
+
+```
+python -m pip install pyinstaller
+python -m PyInstaller --clean --noconfirm mtga-coach.spec   # → dist/MTGA Coach.exe
+```
 
 ## How to use it
 
@@ -121,6 +132,38 @@ Both start switched off, and both are per-feature toggles in **Settings**.
 - Wilson score interval and the two-proportion test: standard statistics, computed locally.
 - Card art and printing data: [Scryfall](https://scryfall.com). Card names and rules text:
   the Arena client's own database.
+
+## Privacy
+
+Worth stating plainly, since this reads a game log.
+
+- **Nothing is uploaded.** There is no account, no telemetry, no crash reporting, no
+  analytics. The two network features are opt-in, off by default, and described above:
+  Scryfall receives a set code and a collector number; Anthropic receives a sanitised
+  position, and only when you press the button.
+- **Your account id and match ids are stored hashed.** The opponent's screen name is stored
+  in plain text, because it is shown on screen — it is the same name Arena displays to you.
+- **The key never leaves the machine** and is encrypted for your Windows account.
+- **`%LOCALAPPDATA%/mtga-coach/sources/` holds any log you uploaded by hand.** A raw Arena
+  log contains account identifiers, so treat that folder as private and do not share it. The
+  database itself does not carry raw log text.
+- Delete `%LOCALAPPDATA%/mtga-coach/` and everything the app knows is gone.
+
+## Sharing it
+
+The licence is MIT, so you may copy, modify and redistribute the software freely. Two limits
+are worth knowing before you post it anywhere:
+
+- **Non-commercial.** Wizards' Fan Content Policy permits fan projects only on a
+  non-commercial basis. Give it away; do not sell it or put it behind a paywall.
+- **Ship no card data.** The app deliberately reads card names and rules text from the Arena
+  client the user already has, and fetches art from Scryfall only at the user's request. Keep
+  it that way: bundling Wizards' card data would turn a fan project into a redistribution
+  problem, and Scryfall's terms forbid repackaging their data as such.
+
+If you report a bug, the useful details are: the version from `/api/health`, whether detailed
+logs were on, and whether the game was BO1 or BO3. Never paste a raw `Player.log` into a
+public thread — it identifies your account.
 
 ## Where this stands with Wizards
 

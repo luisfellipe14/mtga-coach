@@ -1,9 +1,11 @@
 import argparse
 import json
-from pathlib import Path
-import tempfile
+import sys
 import threading
+import tempfile
 import urllib.request
+import webbrowser
+from pathlib import Path
 
 from .http_api import create_server
 from .service import CoachService
@@ -35,6 +37,11 @@ def main():
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--import-current", action="store_true")
     parser.add_argument("--smoke", action="store_true")
+    # A packaged build is double-clicked, so it opens the page itself; a developer run
+    # keeps the terminal free unless the flag is given.
+    frozen = getattr(sys, "frozen", False)
+    parser.add_argument("--open", dest="open_browser", action="store_true", default=frozen)
+    parser.add_argument("--no-open", dest="open_browser", action="store_false")
     args = parser.parse_args()
     if args.smoke:
         smoke()
@@ -46,7 +53,11 @@ def main():
         except (OSError, ValueError):
             print("Initial import unavailable; use Import logs in the interface.")
     server = create_server(service, args.host, args.port)
-    print(f"MTGA Coach em http://127.0.0.1:{server.server_port}/", flush=True)
+    address = f"http://127.0.0.1:{server.server_port}/"
+    print(f"MTGA Coach is running at {address}", flush=True)
+    print("Leave this window open while you play; close it to stop.", flush=True)
+    if args.open_browser:
+        threading.Timer(0.6, webbrowser.open, args=(address,)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
