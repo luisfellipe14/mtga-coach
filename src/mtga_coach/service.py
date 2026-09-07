@@ -926,6 +926,10 @@ class CoachService:
         event = limited_format(state.get("event_name") or "")
         ratings, table = self._ratings_for(expansion, event, sorted(ids))
         grades = self.community.grades(expansion) if expansion else {}
+        # With nothing measuring the set, the app's own order is noise — that was tested —
+        # so the review shows what happened and says nothing about whether it was right.
+        basis = pick.advise(picks[0]["pack_cards"], [], ratings, cards, 1, grades=grades)["basis"]
+        compares = basis != "structure"
         pool: list[int] = []
         rows = []
         agreed = 0
@@ -952,16 +956,20 @@ class CoachService:
             })
             pool.append(taken)
         disagreements = sorted((row for row in rows if not row["agreed"] and row["gap"] is not None),
-                               key=lambda row: -row["gap"])
+                               key=lambda row: -row["gap"]) if compares else []
         return {
-            "picks": rows, "agreed": agreed, "of": len(rows),
-            "expansion": expansion, "table": table, "basis": pick.advise(
-                picks[0]["pack_cards"], [], ratings, cards, 1, grades=grades)["basis"],
+            "picks": rows, "agreed": agreed if compares else None, "of": len(rows),
+            "compares": compares, "expansion": expansion, "table": table, "basis": basis,
             "biggest": disagreements[:5],
             "cards": {str(cid): card for cid, card in cards.items()},
             "note": ("The app is replaying with the whole pool visible in hindsight and no clock. "
                      "Where it disagrees, the question is which of the two readings was right — "
-                     "it did not sit at the table."),
+                     "it did not sit at the table."
+                     if compares else
+                     "Nothing measures this set, and ordering a pack by card text was tested "
+                     "against 17Lands and came out near enough to random. So this is the record "
+                     "of what was in each pack and what left it — no second opinion, because the "
+                     "app does not have one worth reading here."),
         }
 
     def draft_deck(self) -> dict:

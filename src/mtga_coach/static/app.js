@@ -56,7 +56,7 @@ const state = {
   summary: null, games: [], mode: 'BO1', detail: null, framePosition: 0, cards: {}, deckCards: {},
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
-  draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false,
+  draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
   live: null, liveTimer: null, liveStamp: '', grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
@@ -1450,6 +1450,7 @@ function renderDraft() {
   }
   target.append(poolBlock(draft));
   target.append(deckBlock());
+  target.append(reviewBlock());
   target.append(gradeBlock(draft));
   target.append(element('small', 'draft-credit', draft.credit));
 }
@@ -1695,6 +1696,75 @@ function renderDeck(stage, deck) {
   stage.append(copy);
   stage.append(element('small', null,
     'This decides the mechanical part only — the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
+}
+
+// The record of the draft, pick by pick. Whether it carries a second opinion depends on
+// whether the app has one worth reading: on a set nothing measures, it does not.
+function reviewBlock() {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'How the picks went'));
+  const action = element('button', 'button secondary', state.review ? 'Read it again' : 'Replay the draft');
+  action.type = 'button';
+  action.addEventListener('click', () => loadReview(box));
+  box.append(action);
+  const stage = element('div', 'review-stage');
+  box.append(stage);
+  if (state.review) renderReview(stage, state.review);
+  return box;
+}
+
+async function loadReview(box) {
+  const stage = box.querySelector('.review-stage');
+  stage.replaceChildren(element('p', 'subtle', 'Replaying…'));
+  try {
+    state.review = await request('/api/draft/review');
+    Object.assign(state.cards, state.review.cards ?? {});
+    renderReview(stage, state.review);
+  } catch (error) {
+    stage.replaceChildren(element('p', 'gap', error.message));
+  }
+}
+
+function renderReview(stage, review) {
+  stage.replaceChildren();
+  if (!review.picks?.length) {
+    stage.append(element('p', 'subtle', review.reason ?? 'No pick recorded with its pack.'));
+    return;
+  }
+  if (review.compares) {
+    stage.append(element('p', null,
+      `The app would have taken the same card in ${review.agreed} of ${review.of} picks.`));
+    if (review.biggest?.length) {
+      stage.append(element('h4', null, 'Where it read the pack differently'));
+      review.biggest.forEach((row) => {
+        const item = element('article', 'review-gap');
+        item.append(element('strong', null,
+          `P${row.pack}p${row.pick}: you took ${row.taken_name}, it would have taken ${row.suggested_name}`));
+        item.append(element('small', null,
+          `your card ranked ${row.rank_of_yours} of ${row.options} · ${row.gap} apart`));
+        (row.why ?? []).slice(0, 2).forEach((reason) => item.append(element('p', 'subtle', reason)));
+        stage.append(item);
+      });
+    }
+  } else {
+    stage.append(element('p', 'gap', review.note));
+  }
+
+  const list = element('div', 'review-list');
+  review.picks.slice().reverse().forEach((row) => {
+    const item = element('article', `review-row${row.agreed ? ' agreed' : ''}`);
+    const head = element('button', 'text-button', `P${row.pack ?? '—'}p${row.pick ?? '—'}: ${row.taken_name}`);
+    head.type = 'button';
+    head.addEventListener('click', () => inspectCard(row.taken));
+    item.append(head);
+    if (review.compares && row.suggested && !row.agreed) {
+      item.append(element('small', null, `it would have taken ${row.suggested_name}`));
+    }
+    item.append(element('small', 'review-lane', `${row.options} cards in the pack${row.lane?.length ? ` · pool in ${row.lane.join('')}` : ''}`));
+    list.append(item);
+  });
+  stage.append(list);
+  if (review.compares) stage.append(element('small', null, review.note));
 }
 
 // The write end of the open data. A grade stays on this machine until its author decides

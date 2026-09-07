@@ -356,3 +356,14 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .deck-section > input { margin: .4rem 0; max-width: 26rem; }
 .grade-list { max-height: 24rem; overflow-y: auto; padding-right: .4rem; }
 .grade-row .text-button { text-align: left; }
+
+.review-stage { margin-top: .7rem; }
+.review-gap { border-left: 2px solid var(--gold); margin: .5rem 0; padding: .2rem 0 .2rem .6rem; }
+.review-gap small { color: var(--muted); display: block; font-size: .74rem; }
+.review-gap p { font-size: .8rem; margin: .2rem 0; }
+.review-list { display: grid; gap: .3rem; margin-top: .8rem; max-height: 22rem; overflow-y: auto; padding-right: .4rem; }
+.review-row { border-left: 2px solid rgba(255,255,255,.09); padding: .2rem .5rem; }
+.review-row.agreed { border-left-color: var(--jade); }
+.review-row .text-button { text-align: left; }
+.review-row small { color: var(--muted); display: block; font-size: .72rem; }
+.review-lane { opacity: .7; }
