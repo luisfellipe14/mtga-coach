@@ -48,7 +48,7 @@ def session(match, finished=False):
 
 class LogWatcherTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self.directory.name)
         self.log = self.root / "Player.log"
         self.service = CoachService(data_dir=self.root / "data", log_path=self.log)

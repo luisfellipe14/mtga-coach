@@ -11,6 +11,7 @@ from . import analysis, coach, pick, timeline
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
+from .draft import raw_status, write_raw
 from .limited import CREDIT as LIMITED_CREDIT, FORMATS, LimitedRatings
 from .rulings import CREDIT as RULINGS_CREDIT, RulingsCache
 from .secrets import KeyStore
@@ -110,7 +111,8 @@ class CoachService:
                 ingestor.feed(chunk)
         ingestor.finish()
         ingestor.source_sha256 = digest.hexdigest()
-        snapshot = ingestor.snapshot()
+        snapshot = ingestor.snapshot(drain_raw=True)
+        write_raw(self.data_dir, snapshot.get("draft_raw") or [])
         for game in snapshot["games"]:
             game["source_sha256"] = digest.hexdigest()
         result = self.store.save_import(snapshot, source_kind, total)
@@ -126,6 +128,7 @@ class CoachService:
         if len(body) > MAX_LOG_BYTES:
             raise ValueError("file exceeds the limit")
         normalized = self.importer(body)
+        write_raw(self.data_dir, normalized.get("draft_raw") or [])
         source_hash = str(normalized.get("source_sha256") or sha256(body).hexdigest())
         normalized = {**normalized, "source_sha256": source_hash}
         result = self.store.save_import(normalized, source_kind, len(body))
@@ -659,7 +662,7 @@ class CoachService:
         live = self.watcher.draft_state() if self.watcher is not None else None
         state = live or self.store.latest_draft()
         if not state:
-            return {"active": False, "live": False,
+            return {"active": False, "live": False, "raw": raw_status(self.data_dir),
                     "hint": ("Turn Follow matches on before you enter the draft: Arena writes "
                              "each pack to the log as it is dealt, and discards the file when the "
                              "client restarts."),

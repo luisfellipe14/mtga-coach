@@ -12,6 +12,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .draft import write_raw
 from .ingest import LogIngestor
 
 FINGERPRINT_BYTES = 4096
@@ -65,6 +66,8 @@ class LogWatcher:
         self._fingerprint = ""
         self._session_id = ""
         self._pending_since_flush = 0
+        self._draft_mark = ""
+        self._wallet_mark = 0
         self.state = {"running": False, "path": str(self.path), "bytes_read": 0,
                       "sessions": 0, "games": 0, "flushes": 0, "last_read_at": None,
                       "error": None, "detailed_logs": None, "previous_imported": False}
@@ -215,11 +218,21 @@ class LogWatcher:
     def _flush_locked(self):
         if self._ingestor is None:
             return 0
+        # Draft records are written whether or not any game was flushed: a draft happens
+        # before the first match, when there is nothing else to persist.
+        write_raw(self.service.data_dir, self._ingestor.draft.drain_raw())
         snapshot = self._ingestor.snapshot(dirty_only=True)
         games = snapshot.get("games", [])
-        if not games:
+        # A draft happens before the first match of the event, so a flush that only
+        # persists games loses the pool of anyone who closes the client after drafting.
+        draft = snapshot.get("draft") or {}
+        moved = (draft.get("updated_at") or "") != self._draft_mark or len(
+            snapshot.get("wallet") or []) != self._wallet_mark
+        if not games and not moved:
             self._pending_since_flush = 0
             return 0
+        self._draft_mark = draft.get("updated_at") or ""
+        self._wallet_mark = len(snapshot.get("wallet") or [])
         self.service.store.absorb_session(snapshot)
         finished = [game["id"] for game in games if game.get("status") == "complete"]
         self._ingestor.clear_dirty()

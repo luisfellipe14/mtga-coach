@@ -16,6 +16,7 @@ no values) so an unfamiliar dialect can be read off the diagnostics instead of g
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 # The keys each dialect uses. A pack event is any dict carrying one of the pack keys with
 # at least two card ids in it — one card is a pick, not a pack.
@@ -28,6 +29,13 @@ EVENT_KEYS = ("EventName", "eventName", "InternalEventName", "internalEventName"
 PICKED_CARD_KEYS = ("CardId", "cardId", "GrpId", "grpId", "PickGrpId", "pickGrpId")
 MIN_PACK_SIZE = 2
 MAX_SHAPES = 25
+# Entering a draft costs gems or gold, so the first one has to be enough to get the reader
+# right. Every draft-shaped record is kept verbatim on disk until these bounds are reached
+# — recognised ones too, because a mapping that runs without error can still be reading the
+# pick number off the wrong key. The file stays on this machine like everything else.
+RAW_RECORDS = 500
+RAW_BYTES = 2 * 1024 * 1024
+RAW_FILE = "draft-raw.jsonl"
 # Three packs of fifteen is the shape of every draft Arena runs today; the ceilings only
 # stop a malformed record from claiming an absurd position.
 MAX_PACK = 6
@@ -36,6 +44,34 @@ MAX_PICK = 30
 
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def write_raw(data_dir, entries):
+    """Append kept draft records to one file, capped so a long session cannot fill a disk."""
+    if not entries:
+        return 0
+    path = Path(data_dir) / RAW_FILE
+    try:
+        if path.is_file() and path.stat().st_size >= RAW_BYTES * 4:
+            return 0
+        with path.open("a", encoding="utf-8") as handle:
+            for entry in entries:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except (OSError, TypeError, ValueError):
+        return 0
+    return len(entries)
+
+
+def raw_status(data_dir):
+    path = Path(data_dir) / RAW_FILE
+    if not path.is_file():
+        return {"file": str(path), "records": 0, "bytes": 0}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {"file": str(path), "records": 0, "bytes": 0}
+    return {"file": str(path), "records": sum(1 for line in text.splitlines() if line.strip()),
+            "bytes": path.stat().st_size}
 
 
 def card_ids(value):
@@ -108,6 +144,9 @@ class DraftTracker:
     """The state of the draft currently being drafted, rebuilt from the log as it grows."""
 
     def __init__(self):
+        self.raw = []
+        self.raw_bytes = 0
+        self.raw_dropped = 0
         self.draft_id = ""
         self.event_name = ""
         self.pack_number = None
@@ -144,7 +183,8 @@ class DraftTracker:
                 "pool": list(self.pool), "picks": [dict(item) for item in self.picks],
                 "updated_at": self.updated_at, "records": self.records,
                 "matched_keys": sorted(self.matched_keys),
-                "unrecognised_shapes": list(self.shapes), "zero_based": self.zero_based}
+                "unrecognised_shapes": list(self.shapes), "zero_based": self.zero_based,
+                "raw_pending": len(self.raw), "raw_dropped": self.raw_dropped}
 
     # ------------------------------------------------------------------ reading
 
@@ -152,13 +192,35 @@ class DraftTracker:
         payload = record.get("payload")
         if not isinstance(payload, (dict, list)):
             return False
-        touched = False
+        touched = shaped = False
         for value in dicts(payload):
             if self._pack_event(value) or self._pick_event(value):
                 touched = True
+            elif not shaped and any("draft" in str(key).lower() for key in value):
+                shaped = True
+        if touched or shaped:
+            self._keep_raw(record, touched)
         if not touched:
             self._note_shape(payload)
         return touched
+
+    def _keep_raw(self, record, recognised):
+        if len(self.raw) >= RAW_RECORDS or self.raw_bytes >= RAW_BYTES:
+            self.raw_dropped += 1
+            return
+        entry = {"line": record.get("line"), "recognised": recognised,
+                 "at": _now(), "payload": record.get("payload")}
+        try:
+            size = len(json.dumps(entry, ensure_ascii=False))
+        except (TypeError, ValueError):
+            return
+        self.raw.append(entry)
+        self.raw_bytes += size
+
+    def drain_raw(self):
+        """Hand over what was kept; the caller writes it and this reader forgets it."""
+        entries, self.raw = self.raw, []
+        return entries
 
     def _identify(self, value):
         key, draft_id = _first(value, DRAFT_ID_KEYS)

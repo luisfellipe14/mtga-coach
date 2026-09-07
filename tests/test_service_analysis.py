@@ -87,7 +87,7 @@ CARDS = {
 
 class ServiceAnalysisTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.service = CoachService(data_dir=Path(self.directory.name))
         # The installed Arena database is not a test dependency: the catalogue is stubbed.
         self.service.cards = lambda ids: {str(cid): CARDS[str(cid)] for cid in ids if str(cid) in CARDS}

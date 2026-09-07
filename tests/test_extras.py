@@ -101,7 +101,7 @@ class _FakeFetcher:
 
 class ArtCacheTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self.directory.name)
 
     def tearDown(self):
@@ -183,7 +183,7 @@ class KeyStoreTests(unittest.TestCase):
     def test_the_key_round_trips_encrypted_and_never_lands_in_plain_text(self):
         if not secrets.available():
             self.skipTest("DPAPI só existe no Windows")
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = secrets.KeyStore(Path(directory))
             self.assertFalse(store.has_key())
             store.save("sk-ant-teste-1234")
@@ -198,7 +198,7 @@ class KeyStoreTests(unittest.TestCase):
     def test_saving_an_empty_value_forgets_the_key(self):
         if not secrets.available():
             self.skipTest("DPAPI só existe no Windows")
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
             store = secrets.KeyStore(Path(directory))
             store.save("sk-ant-teste-1234")
             self.assertFalse(store.save("   "))
@@ -264,7 +264,7 @@ class RulingsCacheTests(unittest.TestCase):
     """Rulings are retrieved by card identity: precise, and only for cards in the position."""
 
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
+        self.directory = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.root = Path(self.directory.name)
 
     def tearDown(self):

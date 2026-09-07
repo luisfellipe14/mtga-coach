@@ -227,7 +227,7 @@ class LogIngestor:
     def warnings(self):
         return list(self.scanner.warnings)
 
-    def snapshot(self, dirty_only=False):
+    def snapshot(self, dirty_only=False, drain_raw=False):
         keys = self.dirty if dirty_only else self.games.keys()
         games = [self._finalise(self.games[key]) for key in list(keys) if key in self.games]
         return {"source_sha256": self.source_sha256, "record_count": self.record_count,
@@ -235,7 +235,8 @@ class LogIngestor:
                 "matches": deepcopy(self.matches), "named_decks": deepcopy(self.named_decks),
                 "account": dict(self.account), "rank": deepcopy(self.rank),
                 "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet),
-                "draft": self.draft.state() if self.draft.active else None}
+                "draft": self.draft.state() if self.draft.active else None,
+                "draft_raw": self.draft.drain_raw() if drain_raw else []}
 
     def clear_dirty(self):
         self.dirty.clear()
@@ -541,4 +542,4 @@ def ingest_log(data):
     ingestor = LogIngestor(hashlib.sha256(data).hexdigest())
     ingestor.feed(data)
     ingestor.finish()
-    return ingestor.snapshot()
+    return ingestor.snapshot(drain_raw=True)
