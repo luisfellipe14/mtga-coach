@@ -128,6 +128,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, service.matchups())
         elif path == "/api/live":
             self._send(HTTPStatus.OK, service.live_game())
+        elif path == "/api/payouts":
+            self._send(HTTPStatus.OK, service.measured_payouts())
         elif path == "/api/economy":
             self._send(HTTPStatus.OK, service.economy())
         elif path == "/api/wallet":

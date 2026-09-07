@@ -792,6 +792,55 @@ class CoachService:
                      "colourless."),
         }
 
+    def measured_payouts(self) -> dict:
+        """Prize rows this account actually earned, read off the wallet.
+
+        The log states no prize structure and no event scoreboard, so the app would be
+        stuck trusting a typed table. It does not have to be: the gems that arrive when an
+        event ends are in the wallet, and the wins are in the games. Pairing the two turns
+        a typed row into a measured one, and every event played converts another.
+
+        A payout is only claimed when it is unambiguous: exactly one rise in gems between
+        the last game of the event and the first game of whatever came next.
+        """
+        events: dict[str, dict] = {}
+        for game in self.store.games():
+            event = str(game.get("event_id") or "")
+            started = str(game.get("started_at") or "")
+            if not _is_limited(game) or not started:
+                continue
+            entry = events.setdefault(event, {"first": started, "last": started,
+                                              "wins": 0, "losses": 0})
+            entry["first"] = min(entry["first"], started)
+            entry["last"] = max(entry["last"], started)
+            if game.get("result") == "win":
+                entry["wins"] += 1
+            elif game.get("result") == "loss":
+                entry["losses"] += 1
+        points = self.store.wallet()
+        rises = []
+        for before, after in zip(points, points[1:]):
+            change = (after["gems"] or 0) - (before["gems"] or 0)
+            if change > 0:
+                rises.append({"at": after["recorded_at"], "gems": change})
+        order = sorted(events.items(), key=lambda item: item[1]["first"])
+        found = []
+        for index, (event, span) in enumerate(order):
+            ceiling = order[index + 1][1]["first"] if index + 1 < len(order) else "9999"
+            window = [rise for rise in rises if span["last"] <= rise["at"] < ceiling]
+            if len(window) != 1:
+                continue
+            found.append({"event_id": event, "format": limited_format(event),
+                          "wins": span["wins"], "losses": span["losses"],
+                          "gems": window[0]["gems"], "at": window[0]["at"]})
+        table: dict[str, dict[int, int]] = {}
+        for row in found:
+            table.setdefault(row["format"], {})[row["wins"]] = row["gems"]
+        return {"rows": found, "by_format": table,
+                "note": ("Learned from this account: the gems that arrived when an event ended, "
+                         "against the wins counted in it. A payout is only claimed when exactly "
+                         "one rise in gems sits between the event and whatever came next.")}
+
     def economy(self) -> dict:
         """What an entry returns at the rate you actually win limited games.
 
@@ -805,19 +854,24 @@ class CoachService:
         played = sum(1 for game in games if game["result"] in ("win", "loss"))
         measured = analysis.wilson_interval(wins, played) if played else None
         rate = measured["rate"] if measured else None
+        payouts = self.measured_payouts()
         events = []
         for name in economy.EVENTS:
+            seen = payouts["by_format"].get(name, {})
             row = {"event": name, "label": economy.EVENTS[name]["label"],
-                   "break_even": economy.break_even(name),
-                   "reference": [economy.verdict(name, value) for value in REFERENCE_RATES]}
+                   "break_even": economy.break_even(name, measured=seen),
+                   "typed_break_even": economy.break_even(name),
+                   "measured_wins": sorted(seen),
+                   "reference": [economy.verdict(name, value, seen) for value in REFERENCE_RATES]}
             if rate is not None:
-                row["yours"] = economy.verdict(name, rate)
+                row["yours"] = economy.verdict(name, rate, seen)
             events.append(row)
         return {
             "events": events, "reference_rates": list(REFERENCE_RATES),
             "limited_games": played, "limited_wins": wins, "measured": measured,
             "enough": played >= LIMITED_MIN_GAMES, "minimum": LIMITED_MIN_GAMES,
             "pack_gems": economy.PACK_GEMS, "source": economy.SOURCE,
+            "payouts": payouts,
             "unverified": economy.UNVERIFIED,
             "note": ("Games are treated as independent at a constant win rate, which is an "
                      "assumption and not a measurement: a run meets stronger opponents as it "

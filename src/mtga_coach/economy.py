@@ -54,10 +54,10 @@ SOURCE = ("Entry prices and prize structures as published by Wizards of the Coas
 # rot. The one figure confirmed on a real account is the Quick Draft entry: a 750-gem drop
 # was measured in the wallet at the moment of entry. Everything else needs a look at the
 # client's own event screen before it is trusted.
-UNVERIFIED = ("The prize table is typed into this app, not read from the game. The Quick "
-              "Draft entry of 750 gems is confirmed against a measured wallet drop; the "
-              "payouts are not. Check the event screen in the client before betting a "
-              "decision on them.")
+UNVERIFIED = ("The prize table is typed into this app, not read from the game. A row marked "
+              "measured was learned from this account's own wallet — the gems that arrived "
+              "when an event ended, against the wins counted in it. The rest is still typed, "
+              "and the event screen in the client is the place to check it.")
 
 
 def outcome_probabilities(win_rate, wins_cap, losses_cap):
@@ -87,30 +87,38 @@ def outcome_probabilities(win_rate, wins_cap, losses_cap):
     return final
 
 
-def expected_return(event, win_rate):
-    """Gems and packs an entry returns on average, and the record distribution behind it."""
+def expected_return(event, win_rate, measured=None):
+    """Gems and packs an entry returns on average, and the record distribution behind it.
+
+    `measured` replaces a typed payout with one the wallet actually recorded. A row that
+    was measured is a fact about this account; the rest of the table is still typed in.
+    """
     table = EVENTS.get(event)
     if table is None:
         return None
+    measured = {int(k): int(v) for k, v in (measured or {}).items()}
     outcomes = outcome_probabilities(win_rate, table["wins_cap"], table["losses_cap"])
     gems = packs = 0.0
     records = []
     for (wins, losses), probability in sorted(outcomes.items()):
         prize = table["prizes"].get(min(wins, max(table["prizes"])), {"gems": 0, "packs": 0})
-        gems += probability * prize["gems"]
+        paid = measured.get(wins, prize["gems"])
+        gems += probability * paid
         packs += probability * prize["packs"]
         records.append({"wins": wins, "losses": losses, "probability": round(probability, 6),
-                        "gems": prize["gems"], "packs": prize["packs"]})
+                        "gems": paid, "packs": prize["packs"],
+                        "measured": wins in measured})
     return {"event": event, "label": table["label"], "win_rate": round(win_rate, 4),
+            "measured_wins": sorted(measured),
             "entry_gems": table["gems"], "entry_gold": table["gold"],
             "packs_included": table["packs"],
             "expected_gems": round(gems, 1), "expected_packs": round(packs, 2),
             "records": records}
 
 
-def verdict(event, win_rate):
+def verdict(event, win_rate, measured=None):
     """The entry against what it returns, with the pack price used to compare them."""
-    answer = expected_return(event, win_rate)
+    answer = expected_return(event, win_rate, measured)
     if answer is None:
         return {"event": event, "known": False, "note": (
             f"No published prize structure stored for {event}, so nothing is computed.")}
@@ -122,19 +130,19 @@ def verdict(event, win_rate):
             "returned_gems_equivalent": round(returned, 1),
             "net_gems": round(returned - entry, 1),
             "ratio": round(returned / entry, 3) if entry else None,
-            "break_even_rate": break_even(event),
+            "break_even_rate": break_even(event, measured=measured),
             "source": SOURCE,
             "note": ("Packs are counted at the store price so they can be added to gems. That "
                      "is a price, not a valuation: a pack is worth what it opens.")}
 
 
-def break_even(event, precision=0.001):
+def break_even(event, precision=0.001, measured=None):
     """The win rate at which the entry returns what it cost, by bisection."""
     table = EVENTS.get(event)
     if table is None:
         return None
     def net(rate):
-        answer = expected_return(event, rate)
+        answer = expected_return(event, rate, measured)
         returned = answer["expected_gems"] + (answer["expected_packs"] + answer["packs_included"]) * PACK_GEMS
         return returned - table["gems"]
     low, high = 0.0, 1.0

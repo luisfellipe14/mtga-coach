@@ -54,3 +54,30 @@ class ReturnTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MeasuredPayoutTest(unittest.TestCase):
+    """A row the wallet paid replaces a row this app typed in."""
+
+    def test_a_measured_row_changes_the_expected_return(self):
+        typed = economy.expected_return("QuickDraft", 0.6)["expected_gems"]
+        richer = economy.expected_return("QuickDraft", 0.6, measured={7: 5000})["expected_gems"]
+        self.assertGreater(richer, typed)
+
+    def test_a_measured_row_moves_the_break_even_rate(self):
+        typed = economy.break_even("QuickDraft")
+        poorer = economy.break_even("QuickDraft", measured={7: 0, 6: 0, 5: 0})
+        self.assertGreater(poorer, typed)
+
+    def test_a_measurement_equal_to_the_typed_row_changes_nothing(self):
+        # This is the case that verifies the table instead of correcting it.
+        same = economy.EVENTS["QuickDraft"]["prizes"][7]["gems"]
+        self.assertEqual(economy.break_even("QuickDraft", measured={7: same}),
+                         economy.break_even("QuickDraft"))
+
+    def test_each_record_says_whether_it_was_measured(self):
+        answer = economy.expected_return("QuickDraft", 0.5, measured={7: 950})
+        measured = [row for row in answer["records"] if row["measured"]]
+        self.assertTrue(measured)
+        self.assertTrue(all(row["wins"] == 7 for row in measured))
+        self.assertEqual(answer["measured_wins"], [7])
