@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from . import protocol
+from .draft import DraftTracker
 from .reducer import GameReducer
 from .scanner import RecordScanner
 
@@ -205,6 +206,7 @@ class LogIngestor:
         self.rank = None
         self.inventory = None
         self.wallet = []
+        self.draft = DraftTracker()
         self._clock = None
         self.current_match, self.current_key = None, None
         self._self_user_id = None
@@ -232,7 +234,8 @@ class LogIngestor:
                 "warnings": self.warnings, "games": games,
                 "matches": deepcopy(self.matches), "named_decks": deepcopy(self.named_decks),
                 "account": dict(self.account), "rank": deepcopy(self.rank),
-                "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet)}
+                "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet),
+                "draft": self.draft.state() if self.draft.active else None}
 
     def clear_dirty(self):
         self.dirty.clear()
@@ -252,6 +255,9 @@ class LogIngestor:
     # ------------------------------------------------------------------ records
 
     def _consume(self, record):
+        # The draft is written outside the game protocol and outside a match, so it is
+        # offered every record before the game handlers look at any of them.
+        self.draft.consume(record)
         # Records arrive in order, so the most recent timestamp seen bounds anything that
         # carries none of its own — an inventory reading, for one.
         stamp = read_timestamp(record["payload"].get("timestamp")) if isinstance(record["payload"], dict) else None

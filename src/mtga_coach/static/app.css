@@ -285,3 +285,28 @@ details.zone-chip[open] { flex-basis: 100%; }
 .drill-reveal { background: rgba(216, 189, 127, .07); border-left: 3px solid var(--gold); margin-top: 1rem; padding: .8rem 1rem; }
 .drill-reveal h4 { margin-top: .8rem; }
 .drill-reveal p { line-height: 1.5; margin: .3rem 0; }
+
+.live-dot { background: var(--jade); border-radius: 50%; box-shadow: 0 0 8px var(--jade); display: inline-block; height: .5rem; width: .5rem; }
+.draft-head { align-items: center; display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; }
+.live-badge { border: 1px solid rgba(255,255,255,.18); border-radius: 2px; color: var(--muted); font-size: .68rem; letter-spacing: .12em; padding: .2rem .5rem; }
+.live-badge.on { background: rgba(45,160,110,.16); border-color: var(--jade); color: var(--jade); }
+.draft-pick { background: linear-gradient(120deg, rgba(216,189,127,.12), transparent 60%); border-left: 3px solid var(--gold); margin-bottom: 1.4rem; padding: 1rem 1.2rem; }
+.draft-pick h2 { font-size: 1.6rem; margin: .2rem 0 .6rem; }
+.draft-close { color: var(--gold); }
+.why-list { color: var(--muted); font-size: .82rem; line-height: 1.5; margin: .3rem 0; padding-left: 1.1rem; }
+.pack-grid { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.pick-card { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07); border-radius: 3px; cursor: pointer; padding: .6rem .7rem; }
+.pick-card.best { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(216,189,127,.35); }
+.pick-card.unrated { opacity: .55; }
+.pick-card.has-art { background-position: right center; background-size: cover; }
+.pick-head { align-items: baseline; display: flex; gap: .5rem; }
+.pick-rank { color: var(--muted); font-size: .72rem; min-width: 1.1rem; }
+.pick-bar { background: rgba(255,255,255,.07); height: 3px; margin: .5rem 0 .35rem; }
+.pick-fill { background: var(--gold); height: 100%; }
+.pick-numbers { align-items: center; color: var(--muted); display: flex; font-size: .76rem; gap: .5rem; }
+.pool-list { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0; }
+.pool-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 2px; color: inherit; cursor: pointer; font-size: .78rem; padding: .35rem .55rem; text-align: left; }
+.pool-card.wide { cursor: default; display: block; width: 100%; }
+.pool-card small { color: var(--muted); display: block; }
+.draft-credit { color: var(--muted); display: block; margin-top: 1.2rem; }
+code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; word-break: break-all; }

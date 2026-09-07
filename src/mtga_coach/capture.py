@@ -95,6 +95,22 @@ class LogWatcher:
             return dict(self.state, offset=self._offset, session=self._session_id,
                         pending=self._pending_since_flush)
 
+    def draft_state(self):
+        """The draft this session is following, or None while no pack has been seen."""
+        with self._lock:
+            if self._ingestor is None or not self._ingestor.draft.active:
+                return None
+            return self._ingestor.draft.state()
+
+    def draft_diagnostics(self):
+        """What the reader matched and what it could not place, for an unseen dialect."""
+        with self._lock:
+            if self._ingestor is None:
+                return {"matched_keys": [], "unrecognised_shapes": [], "records": 0}
+            tracker = self._ingestor.draft
+            return {"matched_keys": sorted(tracker.matched_keys),
+                    "unrecognised_shapes": list(tracker.shapes), "records": tracker.records}
+
     def _loop(self):
         self.import_previous_session()
         last_flush = 0.0

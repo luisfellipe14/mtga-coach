@@ -49,6 +49,11 @@ class LimitedRatings:
         return value if isinstance(value, dict) and "cards" in value else None
 
     def is_fresh(self, entry):
+        # A table with no rated card is not a table yet: a set whose quick draft has not
+        # opened answers with every card and no win rate, and that answer must not be kept
+        # for a day as though it were the data.
+        if not entry or not entry.get("cards"):
+            return False
         try:
             age = _now() - datetime.fromisoformat(entry["fetched_at"])
         except (KeyError, TypeError, ValueError):
@@ -66,7 +71,7 @@ class LimitedRatings:
         entry = self.stored(expansion, event)
         if entry and self.is_fresh(entry) and not force:
             return {"expansion": expansion, "event": event, "cards": len(entry["cards"]),
-                    "reused": True, "fetched_at": entry["fetched_at"]}
+                    "offered": len(entry["cards"]), "reused": True, "fetched_at": entry["fetched_at"]}
         rows = self.fetcher.ratings(expansion, event)
         cards = {}
         for row in rows:
@@ -86,7 +91,7 @@ class LimitedRatings:
                    "fetched_at": _now().isoformat(timespec="seconds"), "cards": cards}
         self.path_for(expansion, event).write_text(json.dumps(payload), encoding="utf-8")
         return {"expansion": payload["expansion"], "event": event, "cards": len(cards),
-                "reused": False, "fetched_at": payload["fetched_at"]}
+                "offered": len(rows), "reused": False, "fetched_at": payload["fetched_at"]}
 
     def sets(self):
         entries = []

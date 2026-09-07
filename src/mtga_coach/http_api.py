@@ -105,6 +105,12 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/rulings":
             values = query.get("ids", [""])[0].split(",")
             self._send(HTTPStatus.OK, {"rulings": service.rulings_for([int(v) for v in values if v])})
+        elif path == "/api/draft":
+            self._send(HTTPStatus.OK, service.draft())
+        elif path == "/api/draft/export":
+            self._send(HTTPStatus.OK, service.draft_pool_export())
+        elif path == "/api/limited":
+            self._send(HTTPStatus.OK, service.limited_sets())
         elif path == "/api/wallet":
             self._send(HTTPStatus.OK, service.wallet())
         elif path == "/api/capture":
@@ -225,6 +231,11 @@ class _Handler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/rulings":
                 self._send(HTTPStatus.OK, self.coach_service.set_rulings(
                     bool(self._json(body).get("enabled"))))
+            elif parsed.path == "/api/limited/fetch":
+                payload = self._json(body)
+                self._send(HTTPStatus.OK, self.coach_service.fetch_limited(
+                    str(payload.get("expansion", "")), str(payload.get("event") or "PremierDraft"),
+                    bool(payload.get("force"))))
             elif parsed.path == "/api/rulings/fetch":
                 ids = self._json(body).get("card_ids")
                 if not isinstance(ids, list):

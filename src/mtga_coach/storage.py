@@ -166,6 +166,17 @@ class ReviewStore:
                 wc_common INTEGER, wc_uncommon INTEGER, wc_rare INTEGER, wc_mythic INTEGER,
                 vault INTEGER, PRIMARY KEY (recorded_at, gems, gold)
             );
+            CREATE TABLE IF NOT EXISTS drafts (
+                draft_id TEXT PRIMARY KEY, event_name TEXT NOT NULL DEFAULT '',
+                pack INTEGER, pick INTEGER, pool_json TEXT NOT NULL DEFAULT '[]',
+                pack_cards_json TEXT NOT NULL DEFAULT '[]', updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS draft_picks (
+                draft_id TEXT NOT NULL, pack INTEGER NOT NULL, pick INTEGER NOT NULL,
+                card_id INTEGER NOT NULL, pack_cards_json TEXT NOT NULL DEFAULT '[]',
+                recorded_at TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (draft_id, pack, pick)
+            );
             CREATE TABLE IF NOT EXISTS captures (
                 path TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, size INTEGER NOT NULL,
                 offset INTEGER NOT NULL, session_id TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -272,6 +283,7 @@ class ReviewStore:
                 (point["at"], point.get("Gems"), point.get("Gold"), point.get("WildCardCommons"),
                  point.get("WildCardUnCommons"), point.get("WildCardRares"),
                  point.get("WildCardMythics"), point.get("TotalVaultProgress")))
+        self._absorb_draft(snapshot.get("draft"))
         for key in ("rank", "inventory", "account"):
             value = snapshot.get(key)
             if value:
@@ -280,6 +292,48 @@ class ReviewStore:
                     "VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET "
                     "value_json=excluded.value_json, updated_at=excluded.updated_at",
                     (key, _json(value), _now()))
+
+    def _absorb_draft(self, draft: dict | None) -> None:
+        """Keep the draft as it stood at this flush.
+
+        The pool matters after the fact as much as during: the log is discarded on the
+        next client restart, and the picks are the only record of what was passed."""
+        if not isinstance(draft, dict) or not draft.get("draft_id"):
+            return
+        self.connection.execute(
+            "INSERT INTO drafts (draft_id, event_name, pack, pick, pool_json, pack_cards_json, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(draft_id) DO UPDATE SET "
+            "event_name=excluded.event_name, pack=excluded.pack, pick=excluded.pick, "
+            "pool_json=excluded.pool_json, pack_cards_json=excluded.pack_cards_json, "
+            "updated_at=excluded.updated_at",
+            (draft["draft_id"], draft.get("event_name") or "", draft.get("pack"), draft.get("pick"),
+             _json(draft.get("pool") or []), _json(draft.get("pack_cards") or []),
+             draft.get("updated_at") or _now()))
+        for entry in draft.get("picks") or []:
+            if not isinstance(entry, dict) or not isinstance(entry.get("card_id"), int):
+                continue
+            self.connection.execute(
+                "INSERT OR REPLACE INTO draft_picks (draft_id, pack, pick, card_id, "
+                "pack_cards_json, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (draft["draft_id"], int(entry.get("pack") or 0), int(entry.get("pick") or 0),
+                 entry["card_id"], _json(entry.get("pack_cards") or []), entry.get("at") or _now()))
+
+    def latest_draft(self) -> dict | None:
+        """The most recent draft seen, with its picks. None when none was ever read."""
+        with self.lock:
+            row = self.connection.execute(
+                "SELECT * FROM drafts ORDER BY updated_at DESC LIMIT 1").fetchone()
+            if row is None:
+                return None
+            picks = self.connection.execute(
+                "SELECT pack, pick, card_id, pack_cards_json, recorded_at FROM draft_picks "
+                "WHERE draft_id = ? ORDER BY pack, pick", (row["draft_id"],)).fetchall()
+        return {"draft_id": row["draft_id"], "event_name": row["event_name"],
+                "pack": row["pack"], "pick": row["pick"], "pool": _value(row["pool_json"]),
+                "pack_cards": _value(row["pack_cards_json"]), "updated_at": row["updated_at"],
+                "picks": [{"pack": item["pack"], "pick": item["pick"], "card_id": item["card_id"],
+                           "pack_cards": _value(item["pack_cards_json"]), "at": item["recorded_at"]}
+                          for item in picks]}
 
     # ------------------------------------------------------------------ games
 

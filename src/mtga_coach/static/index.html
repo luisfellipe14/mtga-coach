@@ -21,6 +21,7 @@
     <div class="shell">
       <nav class="navigation" aria-label="Main sections">
         <button class="nav-item active" type="button" data-view="matches"><span aria-hidden="true">⌁</span> Matches</button>
+        <button class="nav-item" type="button" data-view="draft"><span aria-hidden="true">◈</span> Draft <span id="draft-dot" class="live-dot" hidden></span></button>
         <button class="nav-item" type="button" data-view="decks"><span aria-hidden="true">◇</span> Decks</button>
         <button class="nav-item" type="button" data-view="stats"><span aria-hidden="true">▤</span> Statistics</button>
         <button class="nav-item" type="button" data-view="training"><span aria-hidden="true">◌</span> Training</button>
@@ -47,6 +48,15 @@
             <div class="section-heading"><div><p class="eyebrow">REPLAY</p><h2 id="replay-title">Recorded position</h2></div><button id="close-replay" class="text-button" type="button">Close replay</button></div>
             <div class="replay-layout"><div id="replay-main" class="replay-main"></div><aside id="decision-sidebar" class="decision-sidebar"></aside></div>
           </section>
+        </section>
+
+        <section id="view-draft" class="view" aria-labelledby="draft-title">
+          <div class="dashboard-heading">
+            <div><p class="eyebrow">PACK ON SCREEN</p><h1 id="draft-title">Draft.</h1>
+            <p class="subtle">The pack is read from the log as it is dealt. The order comes from 17Lands; the colour adjustment is this app's.</p></div>
+            <div id="draft-position" class="count-chip">—</div>
+          </div>
+          <div id="draft-body" aria-live="polite"></div>
         </section>
 
         <section id="view-decks" class="view" aria-labelledby="decks-title">

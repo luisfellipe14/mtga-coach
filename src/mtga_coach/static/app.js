@@ -56,6 +56,7 @@ const state = {
   summary: null, games: [], mode: 'BO1', detail: null, framePosition: 0, cards: {}, deckCards: {},
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
+  draft: null, draftTimer: null, draftStamp: '',
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -1295,6 +1296,205 @@ async function loadWallet() {
   } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
 }
 
+// ---------------------------------------------------------------- draft
+
+// The draft is the one screen that has to keep up with the game: a pick has a timer on it.
+// Polling is cheap here because the answer comes from a table already on disk.
+const DRAFT_POLL_MS = 2000;
+
+async function loadDraft() {
+  try {
+    const draft = await request('/api/draft');
+    const stamp = `${draft.updated_at ?? ''}|${draft.pack ?? ''}|${draft.pick ?? ''}|${draft.pack_cards?.length ?? 0}`;
+    $('#draft-dot').hidden = !draft.live;
+    if (stamp === state.draftStamp && state.draft) return;
+    state.draftStamp = stamp;
+    state.draft = draft;
+    Object.assign(state.cards, draft.cards ?? {});
+    warmArt((draft.pack_cards ?? []).concat(draft.pool ?? []));
+    renderDraft();
+  } catch (error) {
+    if (!state.draft) empty($('#draft-body'), 'The draft could not be read.', error.message);
+  }
+}
+
+function draftPolling(on) {
+  if (state.draftTimer) { clearInterval(state.draftTimer); state.draftTimer = null; }
+  if (on) state.draftTimer = setInterval(loadDraft, DRAFT_POLL_MS);
+}
+
+function renderDraft() {
+  const target = $('#draft-body');
+  const draft = state.draft;
+  target.replaceChildren();
+  if (!draft?.active) {
+    $('#draft-position').textContent = '\u2014';
+    empty(target, 'No draft read yet.', draft?.hint ?? 'Turn Follow matches on before you enter the draft.');
+    if (draft?.diagnostics?.unrecognised_shapes?.length) target.append(draftDiagnostics(draft.diagnostics));
+    return;
+  }
+  $('#draft-position').textContent = draft.pack ? `Pack ${draft.pack} \u00b7 pick ${draft.pick ?? '\u2014'}` : 'Draft stored';
+
+  const head = element('section', 'draft-head');
+  head.append(element('span', draft.live ? 'live-badge on' : 'live-badge', draft.live ? 'LIVE' : 'LAST DRAFT STORED'));
+  head.append(element('span', null, `${draft.event_name || 'Event not named'} \u00b7 ${draft.expansion || 'set unknown'} \u00b7 ${draft.pool?.length ?? 0} picked`));
+  target.append(head);
+
+  if (!draft.advice) target.append(ratingsPrompt(draft));
+  else {
+    if (draft.table?.substituted) target.append(element('p', 'gap', draft.table.note));
+    target.append(recommendation(draft.advice));
+    target.append(packGrid(draft.advice, draft.pack_cards ?? []));
+  }
+  target.append(poolBlock(draft));
+  target.append(element('small', 'draft-credit', draft.credit));
+}
+
+function ratingsPrompt(draft) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'No ranking yet'));
+  box.append(element('p', null, draft.ratings?.note ?? 'The public table for this set is not stored.'));
+  if (!draft.expansion) {
+    box.append(element('p', 'gap', 'The set could not be read from the cards in the pack, so there is nothing to fetch.'));
+    return box;
+  }
+  const action = element('button', 'button primary', `Fetch the 17Lands table for ${draft.expansion}`);
+  action.type = 'button';
+  action.addEventListener('click', async () => {
+    action.disabled = true;
+    setMessage(`Fetching ${draft.expansion} ratings\u2026`);
+    try {
+      const result = await postJson('/api/limited/fetch', { expansion: draft.expansion, event: draft.limited_event });
+      setMessage(result.note || `${result.cards} cards stored for ${result.expansion} \u00b7 ${result.event}.`);
+      state.draftStamp = '';
+      await loadDraft();
+    } catch (error) { setMessage(`The table was not fetched: ${error.message}`, 'error'); action.disabled = false; }
+  });
+  box.append(action);
+  box.append(element('small', null, 'One request, then it is read from disk for a day.'));
+  return box;
+}
+
+function recommendation(advice) {
+  const box = element('section', 'draft-pick');
+  if (!advice.pick) {
+    box.append(element('h2', null, 'No card in this pack carries a published rate.'));
+    return box;
+  }
+  box.append(element('p', 'eyebrow', 'THE PICK'));
+  box.append(element('h2', null, advice.pick_name));
+  const why = element('ul', 'why-list');
+  advice.ranked[0].why.forEach((reason) => why.append(element('li', null, reason)));
+  box.append(why);
+  if (advice.close_calls.length) {
+    const names = advice.close_calls.map((id) => cardName(id)).join(', ');
+    box.append(element('p', 'draft-close',
+      `Close call with ${names}: ${advice.margin?.toFixed(2)} of a win-rate point apart. Take the one that fits the deck you want.`));
+  }
+  advice.notes.forEach((note) => box.append(element('p', 'subtle', note)));
+  box.append(element('small', null, advice.caveat));
+  return box;
+}
+
+function packGrid(advice, packIds) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, `The pack \u00b7 ${packIds.length} cards`));
+  const grid = element('div', 'pack-grid');
+  const top = advice.ranked[0]?.score ?? 0;
+  const floor = advice.ranked[advice.ranked.length - 1]?.score ?? top;
+  advice.ranked.forEach((item, position) => grid.append(pickCard(item, position, top, floor)));
+  advice.unrated.forEach((item) => {
+    const card = element('article', 'pick-card unrated');
+    card.append(element('strong', null, item.name), element('small', null, 'no published rate'));
+    grid.append(card);
+  });
+  box.append(grid);
+  return box;
+}
+
+function pickCard(item, position, top, floor) {
+  const card = element('article', `pick-card${position === 0 ? ' best' : ''}`);
+  applyArt(card, item.card_id);
+  const head = element('div', 'pick-head');
+  head.append(element('span', 'pick-rank', String(position + 1)), element('strong', null, item.name));
+  card.append(head);
+  const bar = element('div', 'pick-bar');
+  const fill = element('div', 'pick-fill');
+  fill.style.width = `${Math.round(((item.score - floor) / Math.max(top - floor, 0.5)) * 92) + 8}%`;
+  bar.append(fill);
+  card.append(bar);
+  const numbers = element('div', 'pick-numbers');
+  numbers.append(element('span', null, percent(item.gih_wr)));
+  if (item.colour_adjustment) numbers.append(element('span', 'gap', `${item.colour_adjustment.toFixed(1)} off colour`));
+  if (item.colours?.length) numbers.append(colourPips(item.colours));
+  card.append(numbers);
+  const why = element('ul', 'why-list');
+  item.why.slice(0, 2).forEach((reason) => why.append(element('li', null, reason)));
+  card.append(why);
+  card.addEventListener('click', () => inspectCard(item.card_id));
+  return card;
+}
+
+function poolBlock(draft) {
+  const box = element('section', 'deck-section');
+  const pool = draft.pool ?? [];
+  box.append(element('h3', null, `Your pool \u00b7 ${pool.length} cards`));
+  if (draft.advice?.lane?.length) {
+    const lane = element('p', null, 'Colours the pool is paying for: ');
+    lane.append(colourPips(draft.advice.lane));
+    lane.append(document.createTextNode(` \u00b7 commitment ${Math.round((draft.advice.commitment ?? 0) * 100)}%`));
+    box.append(lane);
+  }
+  if (!pool.length) { box.append(element('p', 'subtle', 'Nothing picked yet.')); return box; }
+  const counts = new Map();
+  pool.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1));
+  const list = element('div', 'pool-list');
+  [...counts.entries()].forEach(([id, quantity]) => {
+    const entry = element('button', 'pool-card', '');
+    entry.type = 'button';
+    entry.append(element('strong', null, cardName(id)));
+    if (quantity > 1) entry.append(element('span', null, `\u00d7${quantity}`));
+    entry.addEventListener('click', () => inspectCard(id));
+    list.append(entry);
+  });
+  box.append(list);
+  const copy = element('button', 'button secondary', 'Copy the pool as a deck list');
+  copy.type = 'button';
+  copy.addEventListener('click', async () => {
+    try {
+      const payload = await request('/api/draft/export');
+      await navigator.clipboard.writeText(payload.text);
+      setMessage(`${payload.cards} cards copied. Paste them into the deck importer in Arena.`);
+    } catch (error) { setMessage(`The pool was not copied: ${error.message}`, 'error'); }
+  });
+  box.append(copy);
+  const passed = (draft.picks ?? []).filter((entry) => (entry.pack_cards ?? []).length > 1);
+  if (passed.length) {
+    box.append(element('h3', null, 'What you passed'));
+    box.append(element('p', 'subtle', 'Each pick with the pack it came from. This is the part worth reading after the draft.'));
+    const history = element('div', 'pool-list');
+    passed.slice(-12).reverse().forEach((entry) => {
+      const row = element('article', 'pool-card wide');
+      row.append(element('strong', null, `P${entry.pack ?? '\u2014'}p${entry.pick ?? '\u2014'}: ${cardName(entry.card_id)}`));
+      const others = entry.pack_cards.filter((id) => id !== entry.card_id).slice(0, 6).map((id) => cardName(id));
+      row.append(element('small', null, `over ${others.join(', ')}`));
+      history.append(row);
+    });
+    box.append(history);
+  }
+  return box;
+}
+
+function draftDiagnostics(diagnostics) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'What the reader saw'));
+  box.append(element('p', 'subtle',
+    'Key names only, never values. It is here so an unfamiliar draft dialect can be read off the screen instead of guessed at.'));
+  box.append(element('p', null, `Matched: ${listText(diagnostics.matched_keys)}`));
+  diagnostics.unrecognised_shapes.forEach((shape) => box.append(element('code', 'shape', shape)));
+  return box;
+}
+
 // ---------------------------------------------------------------- training
 
 async function loadNotes() {
@@ -1464,6 +1664,7 @@ function setView(name) {
   if (name === 'stats') renderStats();
   if (name === 'settings') renderSettings();
   if (name === 'training') loadNotes();
+  if (name === 'draft') { loadDraft(); draftPolling(true); } else draftPolling(false);
 }
 
 function reducedMotion() { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
@@ -1504,6 +1705,9 @@ function boot() {
   });
   refresh();
   setInterval(() => { if (state.summary?.capture?.running) refresh(); }, 15000);
+  // The dot in the sidebar is what tells him a pack is on screen while he is on another
+  // tab, so the draft is checked on a slow beat even when its view is closed.
+  setInterval(() => { if (state.summary?.capture?.running && !state.draftTimer) loadDraft(); }, 10000);
 }
 
 if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', boot);

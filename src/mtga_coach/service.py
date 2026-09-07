@@ -7,10 +7,11 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, coach, timeline
+from . import analysis, coach, pick, timeline
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
+from .limited import CREDIT as LIMITED_CREDIT, FORMATS, LimitedRatings
 from .rulings import CREDIT as RULINGS_CREDIT, RulingsCache
 from .secrets import KeyStore
 from .storage import ReviewStore
@@ -35,6 +36,23 @@ def _default_data_dir() -> Path:
     return default_data_dir()
 
 
+def limited_format(event_name: str) -> str:
+    """Which 17Lands table describes this event.
+
+    The tables are per format because the formats play differently: the bots in a quick
+    draft do not pick like a table of people, and the cards that win there are not always
+    the cards that win in premier.
+    """
+    name = str(event_name or "")
+    if "Quick" in name or "Bot" in name:
+        return "QuickDraft"
+    if "Trad" in name:
+        return "TradSealed" if "Sealed" in name else "TradDraft"
+    if "Sealed" in name:
+        return "Sealed"
+    return "PremierDraft"
+
+
 def _default_importer(data: bytes) -> dict:
     from .ingest import ingest_log
 
@@ -57,6 +75,7 @@ class CoachService:
         self.watcher = None
         self.art = ArtCache(self.data_dir)
         self.rulings = RulingsCache(self.data_dir)
+        self.limited = LimitedRatings(self.data_dir)
         self.keys = KeyStore(self.data_dir)
         # The catalogue is a read-only file that never changes while the app runs, so a
         # resolved card can be kept; the summary asks for the same ids on every call.
@@ -626,6 +645,126 @@ class CoachService:
             "note": ("Measured from balance readings in the log. The log records no itemised "
                      "transactions, so a movement cannot be attributed to a specific reward."),
         }
+
+    # ------------------------------------------------------------------ draft
+
+    def draft(self) -> dict:
+        """The pack on screen, ranked, while the draft is happening.
+
+        The live reading comes from the follower, because a draft that is only read after
+        the client restarts is a draft the log no longer holds. When nothing is being
+        followed, the last draft stored is shown instead, which is what a review of the
+        picks needs.
+        """
+        live = self.watcher.draft_state() if self.watcher is not None else None
+        state = live or self.store.latest_draft()
+        if not state:
+            return {"active": False, "live": False,
+                    "hint": ("No draft read yet. Turn Follow matches on before entering the "
+                             "draft: Arena writes the packs to the log as they are dealt, and "
+                             "discards the file when the client restarts."),
+                    "diagnostics": self.watcher.draft_diagnostics() if self.watcher else None}
+        pack_ids = [int(cid) for cid in state.get("pack_cards") or []]
+        pool_ids = [int(cid) for cid in state.get("pool") or []]
+        cards = {int(key): value for key, value in self.cards(pack_ids + pool_ids).items()}
+        expansion = self._draft_set(pack_ids, pool_ids, cards)
+        event = limited_format(state.get("event_name") or "")
+        ratings, table = self._ratings_for(expansion, event)
+        advice = None
+        if ratings:
+            advice = pick.advise(pack_ids, pool_ids, ratings, cards, state.get("pick"))
+        return {
+            "active": True, "live": bool(live), "draft_id": state.get("draft_id"),
+            "event_name": state.get("event_name"), "pack": state.get("pack"),
+            "pick": state.get("pick"), "pack_cards": pack_ids, "pool": pool_ids,
+            "picks": state.get("picks") or [], "updated_at": state.get("updated_at"),
+            "cards": {str(cid): card for cid, card in cards.items()},
+            "expansion": expansion, "limited_event": event, "advice": advice,
+            "table": table,
+            "ratings": None if ratings else {
+                "missing": True, "expansion": expansion, "event": event,
+                "note": ("No 17Lands table stored for this set yet. Fetching it is one request "
+                         "and it is then read from disk."),
+            },
+            "credit": LIMITED_CREDIT,
+        }
+
+    def _draft_set(self, pack_ids: list[int], pool_ids: list[int], cards: dict) -> str:
+        """The set being drafted, taken from the cards themselves.
+
+        Reading it from the event name would mean parsing a string Arena changes every
+        season; the printing on the cards in the pack is the same fact without the parsing.
+        """
+        counts: dict[str, int] = {}
+        for cid in pack_ids or pool_ids:
+            code = str((cards.get(cid) or {}).get("set") or "").upper()
+            if code:
+                counts[code] = counts.get(code, 0) + 1
+        return max(counts, key=lambda code: counts[code]) if counts else ""
+
+    def _ratings_for(self, expansion: str, event: str) -> tuple[dict | None, dict]:
+        """The table to rank by, and which one it turned out to be.
+
+        A quick draft on a set that has just released has no table of its own: 17Lands
+        answers with every card and no win rate, because nobody has played that queue yet.
+        The premier draft numbers describe the same cards, so they are used — and the
+        answer says so, because a substituted table is a fact about the advice.
+        """
+        if not expansion:
+            return None, {"event": None, "requested": event, "substituted": False, "cards": 0}
+        order = [event] + [item for item in ("PremierDraft", "TradDraft", "QuickDraft")
+                           if item != event]
+        for candidate in order:
+            table = self.limited.ratings(expansion, candidate)
+            if table:
+                return table, {"event": candidate, "requested": event,
+                               "substituted": candidate != event, "cards": len(table),
+                               "note": ("" if candidate == event else
+                                        f"17Lands has no {event} table for {expansion} yet, so the "
+                                        f"order comes from {candidate}. The cards are the same; the "
+                                        "queue is not.")}
+        return None, {"event": None, "requested": event, "substituted": False, "cards": 0}
+
+    def limited_sets(self) -> dict:
+        return {"sets": self.limited.sets(), "formats": list(FORMATS), "credit": LIMITED_CREDIT}
+
+    def fetch_limited(self, expansion: str, event: str = "PremierDraft", force: bool = False) -> dict:
+        """Store one set's ratings. An empty answer falls through to the table that exists.
+
+        This is one user action, so it does what the user meant: get me the numbers for
+        this set. A queue that has not opened yet returns nothing, and stopping there
+        would leave the pack unranked for a reason the player cannot act on."""
+        if not str(expansion).strip():
+            raise ValueError("no set given")
+        expansion = str(expansion).strip()
+        result = self.limited.fetch(expansion, event, force)
+        if not result["cards"] and event != "PremierDraft":
+            fallback = self.limited.fetch(expansion, "PremierDraft", force)
+            result["fallback"] = fallback
+            result["note"] = (
+                f"17Lands publishes no {event} rate for {expansion} yet — that queue has not "
+                f"been played enough. Premier draft answered with {fallback['cards']} rated "
+                "card(s), and that is what the ranking will use.")
+        elif result["cards"] and result.get("offered") and result["cards"] < result["offered"] * 0.6:
+            result["note"] = (
+                f"{result['cards']} of {result['offered']} cards in {expansion} carry a rate so "
+                "far. On a set this new the rest of the pack has no published number, and the "
+                "screen will say so rather than rank them.")
+        return result
+
+    def draft_pool_export(self) -> dict:
+        """The pool as an Arena deck list, so the picks can be opened in the client."""
+        state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft()
+        if not state:
+            raise KeyError("no draft stored")
+        pool = [int(cid) for cid in state.get("pool") or []]
+        cards = self.cards(pool)
+        counts: dict[int, int] = {}
+        for cid in pool:
+            counts[cid] = counts.get(cid, 0) + 1
+        deck = {"main": [{"id": cid, "quantity": quantity} for cid, quantity in counts.items()],
+                "sideboard": []}
+        return {**format_arena(deck, cards), "cards": len(pool)}
 
     # ------------------------------------------------------------------ deck lists
 
