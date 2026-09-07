@@ -24,6 +24,51 @@ MAX_LOG_BYTES = 512 * 1024 * 1024
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 READ_CHUNK = 4 * 1024 * 1024
 TERMINAL = {"win", "loss", "draw"}
+# Below this many nonland cards seen, the opponent's colours are a guess, not a reading.
+MATCHUP_MIN_CARDS = 3
+# Arena's ladder, lowest first. Mythic is a percentile rather than a tier, so it sits at
+# the top as one step and the app does not pretend to place a player inside it.
+RANK_TIERS = ("Bronze", "Silver", "Gold", "Platinum", "Diamond", "Mythic")
+LEVELS_PER_TIER = 4
+
+
+def rank_position(point: dict, steps_in_tier: dict | None = None) -> float:
+    """A height for the curve. Ordinal only — the distance between two tiers is not a claim.
+
+    Arena counts levels downward inside a tier: level 4 is the bottom of Gold and level 1
+    is the top. The step inside a level has to be part of the height or the curve is flat
+    for the weeks a player spends inside one tier — which is most of them. How many steps
+    a level holds is not stated anywhere in the log, so it is taken from the highest step
+    actually seen in that tier, and the answer says that is where it came from.
+    """
+    try:
+        tier = RANK_TIERS.index(str(point.get("class")))
+    except ValueError:
+        return 0.0
+    level = point.get("level")
+    if not isinstance(level, int) or not 1 <= level <= LEVELS_PER_TIER:
+        return float(tier * LEVELS_PER_TIER)
+    height = float(tier * LEVELS_PER_TIER + (LEVELS_PER_TIER - level))
+    step = point.get("step")
+    ceiling = (steps_in_tier or {}).get(str(point.get("class")))
+    if isinstance(step, int) and isinstance(ceiling, int) and ceiling > 0:
+        height += min(step, ceiling) / (ceiling + 1)
+    return round(height, 3)
+
+
+def steps_seen(points: list) -> dict:
+    """The highest step observed per tier. A floor on the real number, never an invention."""
+    seen: dict[str, int] = {}
+    for point in points:
+        name, step = str(point.get("class")), point.get("step")
+        if isinstance(step, int) and step > seen.get(name, 0):
+            seen[name] = step
+    return seen
+
+
+def _rank_label(point: dict) -> str:
+    level = point.get("level")
+    return f"{point.get('class')}{f' {level}' if isinstance(level, int) else ''}"
 SUMMARY_FIELDS = ("id", "match_id_hashed", "game_number", "mode", "mode_basis", "format",
                   "event_id", "deck_id", "result", "match_result", "result_reason", "status",
                   "turns", "decision_count", "quality", "started_at", "on_play",
@@ -621,6 +666,74 @@ class CoachService:
     def rulings_for(self, card_ids: list[int]) -> dict:
         return {str(card_id): items
                 for card_id, items in self.rulings.for_cards(sorted(set(card_ids))).items()}
+
+    def rank_history(self, track: str = "constructed") -> dict:
+        """The climb, read from the readings the log restates.
+
+        Arena writes the rank the same way it writes the wallet: it never reports a change,
+        it repeats the current position. So the curve starts when this app started looking,
+        not when the account started playing, and the screen says so rather than implying
+        a complete history.
+        """
+        points = self.store.rank_history(track)
+        if not points:
+            return {"track": track, "points": [], "note": (
+                "No rank reading stored yet. The log states the rank while the client runs, "
+                "so the curve begins at the first session this app followed.")}
+        ceilings = steps_seen(points)
+        marked = [{**point, "position": rank_position(point, ceilings)} for point in points]
+        first, last = marked[0], marked[-1]
+        return {
+            "track": track, "points": marked, "readings": len(marked),
+            "from": first["recorded_at"], "to": last["recorded_at"],
+            "first": _rank_label(first), "last": _rank_label(last),
+            "moved": last["position"] - first["position"],
+            "tiers": RANK_TIERS, "steps_seen": ceilings,
+            "wins": last.get("wins"), "losses": last.get("losses"),
+            "note": ("Measured from rank readings in the log. The height inside a tier uses the "
+                     "highest step seen in that tier, because the log never states how many "
+                     "steps a tier holds — so the shape is right and the spacing is a floor."),
+        }
+
+    def matchups(self, minimum_seen: int = MATCHUP_MIN_CARDS) -> dict:
+        """Win rate against the colours the opponent actually showed.
+
+        The colours come from cards that were seen, so a game that ended on turn four
+        reports less than it should. Games under the threshold are counted and named
+        rather than silently folded into a colourless bucket.
+        """
+        rows = []
+        thin = 0
+        for game in self.store.games():
+            if game.get("result") not in TERMINAL or game.get("status") != "complete":
+                continue
+            revealed = [cid for cid in game.get("opponent_revealed") or [] if isinstance(cid, int)]
+            cards = self.cards(revealed)
+            colours = sorted({colour for cid in revealed
+                              for colour in (cards.get(str(cid)) or {}).get("colors") or []})
+            spells = sum(1 for cid in revealed if not (cards.get(str(cid)) or {}).get("is_land"))
+            if spells < minimum_seen:
+                thin += 1
+                continue
+            rows.append({"key": "".join(colours) or "C", "result": game["result"]})
+        buckets: dict[str, dict] = {}
+        for row in rows:
+            bucket = buckets.setdefault(row["key"], {"colours": row["key"], "wins": 0, "losses": 0, "draws": 0})
+            bucket[{"win": "wins", "loss": "losses", "draw": "draws"}[row["result"]]] += 1
+        table = []
+        for bucket in buckets.values():
+            played = bucket["wins"] + bucket["losses"]
+            table.append({**bucket, "games": played + bucket["draws"],
+                          "interval": analysis.wilson_interval(bucket["wins"], played) if played else None})
+        table.sort(key=lambda item: (-item["games"], item["colours"]))
+        return {
+            "rows": table, "counted": len(rows), "skipped_thin": thin,
+            "minimum_seen": minimum_seen,
+            "note": ("Colours are read from the cards the opponent showed, so a short game "
+                     f"reports fewer than it should. {thin} game(s) showed fewer than "
+                     f"{minimum_seen} nonland cards and are left out rather than counted as "
+                     "colourless."),
+        }
 
     def wallet(self) -> dict:
         """Balance over time, measured from the log rather than modelled from payout tables.

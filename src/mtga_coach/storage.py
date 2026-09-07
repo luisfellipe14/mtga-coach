@@ -166,6 +166,11 @@ class ReviewStore:
                 wc_common INTEGER, wc_uncommon INTEGER, wc_rare INTEGER, wc_mythic INTEGER,
                 vault INTEGER, PRIMARY KEY (recorded_at, gems, gold)
             );
+            CREATE TABLE IF NOT EXISTS rank_history (
+                recorded_at TEXT NOT NULL, track TEXT NOT NULL, class TEXT,
+                level INTEGER, step INTEGER, wins INTEGER, losses INTEGER,
+                PRIMARY KEY (recorded_at, track, class, level, step)
+            );
             CREATE TABLE IF NOT EXISTS drafts (
                 draft_id TEXT PRIMARY KEY, event_name TEXT NOT NULL DEFAULT '',
                 pack INTEGER, pick INTEGER, pool_json TEXT NOT NULL DEFAULT '[]',
@@ -283,6 +288,14 @@ class ReviewStore:
                 (point["at"], point.get("Gems"), point.get("Gold"), point.get("WildCardCommons"),
                  point.get("WildCardUnCommons"), point.get("WildCardRares"),
                  point.get("WildCardMythics"), point.get("TotalVaultProgress")))
+        for point in snapshot.get("rank_points") or []:
+            if not isinstance(point, dict) or not point.get("at") or not point.get("class"):
+                continue
+            self.connection.execute(
+                "INSERT OR IGNORE INTO rank_history (recorded_at, track, class, level, step, "
+                "wins, losses) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (point["at"], point.get("track") or "", point.get("class"), point.get("level"),
+                 point.get("step"), point.get("wins"), point.get("losses")))
         self._absorb_draft(snapshot.get("draft"))
         for key in ("rank", "inventory", "account"):
             value = snapshot.get(key)
@@ -649,6 +662,17 @@ class ReviewStore:
                 "SELECT recorded_at, gems, gold, wc_common, wc_uncommon, wc_rare, wc_mythic, vault "
                 "FROM wallet ORDER BY recorded_at").fetchall()
             return [dict(row) for row in rows]
+
+    def rank_history(self, track: str | None = None) -> list[dict]:
+        with self.lock:
+            sql = ("SELECT recorded_at, track, class, level, step, wins, losses "
+                   "FROM rank_history")
+            parameters: tuple = ()
+            if track:
+                sql += " WHERE track = ?"
+                parameters = (track,)
+            rows = self.connection.execute(sql + " ORDER BY recorded_at", parameters).fetchall()
+        return [dict(row) for row in rows]
 
     def database_bytes(self) -> int:
         """Size on disk including the write-ahead log, which holds the newest rows."""

@@ -321,3 +321,9 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .deck-line small { color: var(--muted); display: block; font-size: .7rem; }
 .deck-cut { margin: .8rem 0; }
 .deck-cut summary { color: var(--muted); cursor: pointer; font-size: .8rem; }
+
+.rank-chart { margin: .8rem 0; }
+.rank-chart svg { display: block; height: 130px; width: 100%; }
+.rank-line { fill: none; stroke: var(--jade); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; }
+.matchup-body .rate-bar { margin-bottom: .5rem; }

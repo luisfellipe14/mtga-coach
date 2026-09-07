@@ -206,6 +206,7 @@ class LogIngestor:
         self.rank = None
         self.inventory = None
         self.wallet = []
+        self.rank_points = []
         self.draft = DraftTracker()
         self._clock = None
         self.current_match, self.current_key = None, None
@@ -235,6 +236,7 @@ class LogIngestor:
                 "matches": deepcopy(self.matches), "named_decks": deepcopy(self.named_decks),
                 "account": dict(self.account), "rank": deepcopy(self.rank),
                 "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet),
+                "rank_points": deepcopy(self.rank_points),
                 "draft": self.draft.state() if self.draft.active else None,
                 "draft_raw": self.draft.drain_raw() if drain_raw else []}
 
@@ -306,7 +308,26 @@ class LogIngestor:
         self.rank = {key: value.get(key) for key in
                      ("constructedSeasonOrdinal", "constructedClass", "constructedLevel",
                       "constructedStep", "constructedMatchesWon", "constructedMatchesLost",
-                      "limitedClass", "limitedLevel")}
+                      "limitedClass", "limitedLevel", "limitedStep",
+                      "limitedMatchesWon", "limitedMatchesLost")}
+        # The log restates the rank rather than reporting the change, exactly like the
+        # wallet. Keeping each distinct reading with the nearest timestamp is what turns
+        # that into a climb that can be looked at instead of a single current position.
+        at = read_timestamp(record["payload"].get("timestamp")) or self._clock
+        for track in ("constructed", "limited"):
+            point = {"track": track, "at": at,
+                     "class": value.get(f"{track}Class"), "level": value.get(f"{track}Level"),
+                     "step": value.get(f"{track}Step"),
+                     "wins": value.get(f"{track}MatchesWon"),
+                     "losses": value.get(f"{track}MatchesLost")}
+            if point["class"] is None:
+                continue
+            previous = next((item for item in reversed(self.rank_points)
+                             if item["track"] == track), None)
+            if previous and {k: v for k, v in previous.items() if k != "at"} == \
+                    {k: v for k, v in point.items() if k != "at"}:
+                continue
+            self.rank_points.append(point)
 
     def _on_room(self, config, line, record):
         raw_match = config["matchId"]

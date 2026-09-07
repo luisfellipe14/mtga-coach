@@ -1128,13 +1128,18 @@ function renderStats() {
   const target = $('#stats-body'); target.replaceChildren();
   const summary = state.summary;
   if (!summary) { empty(target, 'No data.', 'Import a log to compute statistics.'); return; }
-  const rank = summary.rank;
-  if (rank?.constructedClass) {
-    const box = element('section', 'deck-section');
-    box.append(element('h3', null, 'Constructed rank'));
-    box.append(element('p', null, `${rank.constructedClass} ${rank.constructedLevel ?? ''} · season ${rank.constructedSeasonOrdinal ?? '—'} · ${rank.constructedMatchesWon ?? 0} wins and ${rank.constructedMatchesLost ?? 0} losses as recorded by the client`));
-    target.append(box);
-  }
+  const climb = element('section', 'deck-section');
+  climb.append(element('h3', null, 'The climb'));
+  climb.append(element('div', 'rank-body', 'Reading…'));
+  target.append(climb);
+  loadRank();
+
+  const versus = element('section', 'deck-section');
+  versus.append(element('h3', null, 'Against what the opponent showed'));
+  versus.append(element('div', 'matchup-body', 'Reading…'));
+  target.append(versus);
+  loadMatchups();
+
   const start = element('section', 'deck-section');
   start.append(element('h3', null, 'Who went first'));
   start.append(statRow('On the play', summary.by_start?.on_play), statRow('On the draw', summary.by_start?.on_draw));
@@ -1328,16 +1333,16 @@ function renderDraft() {
   const draft = state.draft;
   target.replaceChildren();
   if (!draft?.active) {
-    $('#draft-position').textContent = '\u2014';
+    $('#draft-position').textContent = '—';
     empty(target, 'No draft read yet.', draft?.hint ?? 'Turn Follow matches on before you enter the draft.');
     if (draft?.diagnostics?.unrecognised_shapes?.length) target.append(draftDiagnostics(draft.diagnostics));
     return;
   }
-  $('#draft-position').textContent = draft.pack ? `Pack ${draft.pack} \u00b7 pick ${draft.pick ?? '\u2014'}` : 'Draft stored';
+  $('#draft-position').textContent = draft.pack ? `Pack ${draft.pack} · pick ${draft.pick ?? '—'}` : 'Draft stored';
 
   const head = element('section', 'draft-head');
   head.append(element('span', draft.live ? 'live-badge on' : 'live-badge', draft.live ? 'LIVE' : 'LAST DRAFT STORED'));
-  head.append(element('span', null, `${draft.event_name || 'Event not named'} \u00b7 ${draft.expansion || 'set unknown'} \u00b7 ${draft.pool?.length ?? 0} picked`));
+  head.append(element('span', null, `${draft.event_name || 'Event not named'} · ${draft.expansion || 'set unknown'} · ${draft.pool?.length ?? 0} picked`));
   target.append(head);
 
   if (!draft.advice) target.append(ratingsPrompt(draft));
@@ -1363,10 +1368,10 @@ function ratingsPrompt(draft) {
   action.type = 'button';
   action.addEventListener('click', async () => {
     action.disabled = true;
-    setMessage(`Fetching ${draft.expansion} ratings\u2026`);
+    setMessage(`Fetching ${draft.expansion} ratings…`);
     try {
       const result = await postJson('/api/limited/fetch', { expansion: draft.expansion, event: draft.limited_event });
-      setMessage(result.note || `${result.cards} cards stored for ${result.expansion} \u00b7 ${result.event}.`);
+      setMessage(result.note || `${result.cards} cards stored for ${result.expansion} · ${result.event}.`);
       state.draftStamp = '';
       await loadDraft();
     } catch (error) { setMessage(`The table was not fetched: ${error.message}`, 'error'); action.disabled = false; }
@@ -1399,7 +1404,7 @@ function recommendation(advice) {
 
 function packGrid(advice, packIds) {
   const box = element('section', 'deck-section');
-  box.append(element('h3', null, `The pack \u00b7 ${packIds.length} cards`));
+  box.append(element('h3', null, `The pack · ${packIds.length} cards`));
   const grid = element('div', 'pack-grid');
   const top = advice.ranked[0]?.score ?? 0;
   const floor = advice.ranked[advice.ranked.length - 1]?.score ?? top;
@@ -1439,11 +1444,11 @@ function pickCard(item, position, top, floor) {
 function poolBlock(draft) {
   const box = element('section', 'deck-section');
   const pool = draft.pool ?? [];
-  box.append(element('h3', null, `Your pool \u00b7 ${pool.length} cards`));
+  box.append(element('h3', null, `Your pool · ${pool.length} cards`));
   if (draft.advice?.lane?.length) {
     const lane = element('p', null, 'Colours the pool is paying for: ');
     lane.append(colourPips(draft.advice.lane));
-    lane.append(document.createTextNode(` \u00b7 commitment ${Math.round((draft.advice.commitment ?? 0) * 100)}%`));
+    lane.append(document.createTextNode(` · commitment ${Math.round((draft.advice.commitment ?? 0) * 100)}%`));
     box.append(lane);
   }
   if (!pool.length) { box.append(element('p', 'subtle', 'Nothing picked yet.')); return box; }
@@ -1454,7 +1459,7 @@ function poolBlock(draft) {
     const entry = element('button', 'pool-card', '');
     entry.type = 'button';
     entry.append(element('strong', null, cardName(id)));
-    if (quantity > 1) entry.append(element('span', null, `\u00d7${quantity}`));
+    if (quantity > 1) entry.append(element('span', null, `×${quantity}`));
     entry.addEventListener('click', () => inspectCard(id));
     list.append(entry);
   });
@@ -1476,7 +1481,7 @@ function poolBlock(draft) {
     const history = element('div', 'pool-list');
     passed.slice(-12).reverse().forEach((entry) => {
       const row = element('article', 'pool-card wide');
-      row.append(element('strong', null, `P${entry.pack ?? '\u2014'}p${entry.pick ?? '\u2014'}: ${cardName(entry.card_id)}`));
+      row.append(element('strong', null, `P${entry.pack ?? '—'}p${entry.pick ?? '—'}: ${cardName(entry.card_id)}`));
       const others = entry.pack_cards.filter((id) => id !== entry.card_id).slice(0, 6).map((id) => cardName(id));
       row.append(element('small', null, `over ${others.join(', ')}`));
       history.append(row);
@@ -1503,7 +1508,7 @@ function deckBlock() {
 
 async function loadDeck(box) {
   const stage = box.querySelector('.deck-stage');
-  stage.replaceChildren(element('p', 'subtle', 'Building\u2026'));
+  stage.replaceChildren(element('p', 'subtle', 'Building…'));
   try {
     state.deck = await request('/api/draft/deck');
     Object.assign(state.cards, state.deck.cards ?? {});
@@ -1522,8 +1527,8 @@ function renderDeck(stage, deck) {
   const head = element('p', 'deck-head');
   head.append(colourPips(deck.pair.split('')));
   head.append(document.createTextNode(
-    ` ${deck.spells.length} spells + ${deck.lands} lands \u00b7 ${deck.creatures} creatures`
-    + (deck.short ? ` \u00b7 ${deck.short} short of a full deck` : '')));
+    ` ${deck.spells.length} spells + ${deck.lands} lands · ${deck.creatures} creatures`
+    + (deck.short ? ` · ${deck.short} short of a full deck` : '')));
   stage.append(head);
 
   if (deck.basis === 'structure') {
@@ -1531,12 +1536,12 @@ function renderDeck(stage, deck) {
     stage.append(warn);
   } else {
     stage.append(element('p', 'subtle',
-      `Ordered by 17Lands win rate \u00b7 ${deck.coverage.covered} of ${deck.coverage.of_pool} pool cards covered.`));
+      `Ordered by 17Lands win rate · ${deck.coverage.covered} of ${deck.coverage.of_pool} pool cards covered.`));
   }
 
   if (deck.alternatives?.length) {
     const alts = deck.alternatives.map((item) =>
-      `${item.pair} ${item.total}${item.short ? ` (${item.short} short)` : ''}`).join(' \u00b7 ');
+      `${item.pair} ${item.total}${item.short ? ` (${item.short} short)` : ''}`).join(' · ');
     stage.append(element('p', 'subtle', `Pairs that lost: ${alts}. Yours totalled ${deck.total}.`));
   }
 
@@ -1549,12 +1554,12 @@ function renderDeck(stage, deck) {
   });
   [...byMana.keys()].sort((a, b) => a - b).forEach((mana) => {
     const column = element('div', 'deck-column');
-    column.append(element('h4', null, `${mana} mana \u00b7 ${byMana.get(mana).length}`));
+    column.append(element('h4', null, `${mana} mana · ${byMana.get(mana).length}`));
     byMana.get(mana).sort((a, b) => b.score - a.score).forEach((item) => {
       const row = element('button', 'deck-line', '');
       row.type = 'button';
       row.append(element('strong', null, item.name));
-      row.append(element('small', null, `${item.score} \u00b7 ${(item.why ?? []).slice(0, 2).join(', ') || 'no reason recorded'}`));
+      row.append(element('small', null, `${item.score} · ${(item.why ?? []).slice(0, 2).join(', ') || 'no reason recorded'}`));
       row.addEventListener('click', () => inspectCard(item.card_id));
       column.append(row);
     });
@@ -1562,21 +1567,21 @@ function renderDeck(stage, deck) {
   });
   stage.append(list);
 
-  const lands = Object.entries(deck.land_base.basics).map(([colour, quantity]) => `${quantity} ${colour}`).join(' \u00b7 ');
+  const lands = Object.entries(deck.land_base.basics).map(([colour, quantity]) => `${quantity} ${colour}`).join(' · ');
   const nonbasic = deck.land_base.nonbasic.map((item) => `${item.quantity} ${item.name}`).join(', ');
-  stage.append(element('p', null, `Mana base: ${lands}${nonbasic ? ` \u00b7 ${nonbasic}` : ''}`));
+  stage.append(element('p', null, `Mana base: ${lands}${nonbasic ? ` · ${nonbasic}` : ''}`));
   (deck.mana ?? []).forEach((item) => {
     stage.append(element('p', item.shortfall ? 'gap' : 'subtle',
-      `${item.colour} \u00d7${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources`
-      + (item.shortfall ? ` \u2014 ${item.shortfall} short, wanted by ${item.driver}` : ' \u2014 met')
+      `${item.colour} ×${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources`
+      + (item.shortfall ? ` — ${item.shortfall} short, wanted by ${item.driver}` : ' — met')
       + ` (${item.basis})`));
   });
 
   if (deck.left_out?.length) {
     const cut = element('details', 'deck-cut');
-    cut.append(element('summary', null, `Left out \u00b7 ${deck.left_out.length} of the best`));
+    cut.append(element('summary', null, `Left out · ${deck.left_out.length} of the best`));
     deck.left_out.forEach((item) => cut.append(element('p', 'subtle',
-      `${item.name} \u00b7 ${item.score} \u00b7 ${item.colours.join('') || 'colourless'}`)));
+      `${item.name} · ${item.score} · ${item.colours.join('') || 'colourless'}`)));
     stage.append(cut);
   }
 
@@ -1591,7 +1596,7 @@ function renderDeck(stage, deck) {
   });
   stage.append(copy);
   stage.append(element('small', null,
-    'This decides the mechanical part only \u2014 the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
+    'This decides the mechanical part only — the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
 }
 
 function draftDiagnostics(diagnostics) {
@@ -1605,6 +1610,82 @@ function draftDiagnostics(diagnostics) {
 }
 
 // ---------------------------------------------------------------- training
+
+// Arena restates the rank instead of reporting a change, exactly like the wallet, so the
+// curve begins at the first session this app followed and never claims to be a history.
+async function loadRank() {
+  const holder = document.querySelector('.rank-body');
+  if (!holder) return;
+  try {
+    const rank = await request('/api/rank');
+    holder.replaceChildren();
+    if (!rank.points?.length) { holder.append(element('p', 'subtle', rank.note)); return; }
+    const head = element('p', null,
+      `${rank.first} \→ ${rank.last} \· ${rank.readings} readings \· ${rank.wins ?? 0} wins and ${rank.losses ?? 0} losses as the client counts them`);
+    holder.append(head);
+    holder.append(rankChart(rank));
+    holder.append(element('small', null, rank.note));
+  } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
+}
+
+function rankChart(rank) {
+  const chart = element('div', 'rank-chart');
+  const heights = rank.points.map((point) => point.position);
+  const low = Math.min(...heights), high = Math.max(...heights);
+  const span = Math.max(high - low, 0.5);
+  const svgns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${Math.max(rank.points.length - 1, 1)} 100`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `Rank from ${rank.first} to ${rank.last}`);
+  const line = document.createElementNS(svgns, 'polyline');
+  line.setAttribute('points', rank.points.map((point, at) =>
+    `${at},${100 - ((point.position - low) / span) * 92 - 4}`).join(' '));
+  line.setAttribute('class', 'rank-line');
+  svg.append(line);
+  chart.append(svg);
+  const scale = element('div', 'rank-scale');
+  const first = rank.points[0], last = rank.points[rank.points.length - 1];
+  scale.append(element('span', null, `${first.class} ${first.level ?? ''} \· ${(first.recorded_at || '').slice(0, 10)}`));
+  scale.append(element('span', null, `${last.class} ${last.level ?? ''} \· ${(last.recorded_at || '').slice(0, 10)}`));
+  chart.append(scale);
+  return chart;
+}
+
+async function loadMatchups() {
+  const holder = document.querySelector('.matchup-body');
+  if (!holder) return;
+  try {
+    const data = await request('/api/matchups');
+    holder.replaceChildren();
+    if (!data.rows?.length) {
+      holder.append(element('p', 'subtle', `No matchup counted yet. ${data.note}`));
+      return;
+    }
+    data.rows.forEach((row) => {
+      const line = element('div', 'rate-bar');
+      const head = element('div', 'rate-head');
+      const name = element('strong', null, '');
+      name.append(colourPips(row.colours === 'C' ? [] : row.colours.split('')));
+      name.append(document.createTextNode(` ${row.wins}\–${row.losses}${row.draws ? `\–${row.draws}` : ''}`));
+      head.append(name, element('span', null, intervalText(row.interval)));
+      line.append(head);
+      if (row.interval) {
+        const track = element('div', 'rate-track');
+        const band = element('div', 'rate-band');
+        band.style.left = `${row.interval.low * 100}%`;
+        band.style.width = `${Math.max((row.interval.high - row.interval.low) * 100, 1)}%`;
+        const point = element('div', 'rate-point');
+        point.style.left = `${row.interval.rate * 100}%`;
+        track.append(element('div', 'rate-half'), band, point);
+        line.append(track);
+      }
+      holder.append(line);
+    });
+    holder.append(element('small', null, data.note));
+  } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
+}
 
 async function loadNotes() {
   try { const payload = await request('/api/notes'); state.notes = payload.notes ?? []; }

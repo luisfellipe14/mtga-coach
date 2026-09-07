@@ -115,6 +115,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, service.draft_pool_export())
         elif path == "/api/limited":
             self._send(HTTPStatus.OK, service.limited_sets())
+        elif path == "/api/rank":
+            self._send(HTTPStatus.OK, service.rank_history(
+                str(query.get("track", ["constructed"])[0])))
+        elif path == "/api/matchups":
+            self._send(HTTPStatus.OK, service.matchups())
         elif path == "/api/wallet":
             self._send(HTTPStatus.OK, service.wallet())
         elif path == "/api/capture":
@@ -334,6 +339,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        # The interface ships inside the app and changes with it. Letting the browser keep
+        # a copy means an updated app still draws the previous version's screen, which is
+        # a bug the user cannot diagnose and cannot fix except by clearing site data.
+        self.send_header("Cache-Control", "no-cache, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 

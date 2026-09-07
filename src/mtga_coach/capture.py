@@ -68,6 +68,7 @@ class LogWatcher:
         self._pending_since_flush = 0
         self._draft_mark = ""
         self._wallet_mark = 0
+        self._rank_mark = 0
         self.state = {"running": False, "path": str(self.path), "bytes_read": 0,
                       "sessions": 0, "games": 0, "flushes": 0, "last_read_at": None,
                       "error": None, "detailed_logs": None, "previous_imported": False}
@@ -226,13 +227,15 @@ class LogWatcher:
         # A draft happens before the first match of the event, so a flush that only
         # persists games loses the pool of anyone who closes the client after drafting.
         draft = snapshot.get("draft") or {}
-        moved = (draft.get("updated_at") or "") != self._draft_mark or len(
-            snapshot.get("wallet") or []) != self._wallet_mark
+        moved = ((draft.get("updated_at") or "") != self._draft_mark
+                 or len(snapshot.get("wallet") or []) != self._wallet_mark
+                 or len(snapshot.get("rank_points") or []) != self._rank_mark)
         if not games and not moved:
             self._pending_since_flush = 0
             return 0
         self._draft_mark = draft.get("updated_at") or ""
         self._wallet_mark = len(snapshot.get("wallet") or [])
+        self._rank_mark = len(snapshot.get("rank_points") or [])
         self.service.store.absorb_session(snapshot)
         finished = [game["id"] for game in games if game.get("status") == "complete"]
         self._ingestor.clear_dirty()
