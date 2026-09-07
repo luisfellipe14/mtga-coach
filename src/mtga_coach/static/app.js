@@ -620,9 +620,12 @@ function renderDecisionTab(target, frame) {
   target.append(prompts);
   const noteForm = document.createElement('form'); noteForm.className = 'note-form';
   const text = document.createElement('textarea'); text.name = 'body'; text.maxLength = 2000; text.required = true; text.placeholder = 'Your note on this position…';
+  const drill = document.createElement('input'); drill.type = 'checkbox'; drill.id = 'note-drill';
+  const drillLabel = element('label', 'drill-toggle', '');
+  drillLabel.append(drill, document.createTextNode(' Come back to this one as a drill'));
   const save = element('button', 'button secondary', 'Save note'); save.type = 'submit';
-  noteForm.append(element('label', null, 'Manual note'), text, save);
-  noteForm.addEventListener('submit', (event) => saveNote(event, frame.index, text));
+  noteForm.append(element('label', null, 'Manual note'), text, drillLabel, save);
+  noteForm.addEventListener('submit', (event) => saveNote(event, frame.index, text, drill.checked));
   target.append(noteForm);
   const context = element('button', 'button primary', 'Copy context'); context.type = 'button'; context.disabled = !safe;
   context.addEventListener('click', () => copyContext(frame.index)); target.append(context);
@@ -745,10 +748,10 @@ async function openGame(id) {
   } catch (error) { setMessage(`Could not open the replay: ${error.message}`, 'error'); }
 }
 
-async function saveNote(event, frameIndex, input) {
+async function saveNote(event, frameIndex, input, asDrill = false) {
   event.preventDefault(); const body = input.value.trim(); if (!body) return;
   try {
-    await postJson('/api/notes', { game_id: state.detail.id, frame_index: frameIndex, body, tags: [] });
+    await postJson('/api/notes', { game_id: state.detail.id, frame_index: frameIndex, body, tags: asDrill ? ['drill'] : [] });
     input.value = '';
     state.detail = await request(`/api/games/${encodeURIComponent(state.detail.id)}`);
     await renderReplay(); await loadNotes(); setMessage('Note saved.');
@@ -1275,17 +1278,123 @@ async function loadNotes() {
 
 function renderTraining() {
   const target = $('#training-notes'); target.replaceChildren();
-  if (!state.notes.length) return empty(target, 'No note recorded.', 'Open a game, pick a position, and write the note in the replay sidebar.');
-  const byGame = new Map(state.games.map((game) => [game.id, game]));
-  state.notes.slice().reverse().forEach((note) => {
-    const game = byGame.get(note.game_id);
-    const item = element('article', 'training-note');
-    const open = element('button', 'text-button', `${game ? `${game.deck_label} · ${resultLabel(game.result)}` : note.game_id} · frame ${note.frame_index ?? '—'}`);
-    open.type = 'button';
-    open.addEventListener('click', async () => { await openGame(note.game_id); if (note.frame_index !== null) changeFrame(note.frame_index); setView('matches'); });
-    item.append(open, element('p', null, note.body), element('small', null, listText(note.tags)));
-    target.append(item);
+  if (!state.notes.length) {
+    return empty(target, 'No note recorded.',
+      'Open a game, pick a position, write what you were thinking and tick "come back to this one as a drill".');
+  }
+  const drills = state.notes.filter((note) => (note.tags ?? []).includes('drill') && note.frame_index !== null);
+  const rest = state.notes.filter((note) => !drills.includes(note));
+
+  if (drills.length) {
+    const box = element('section', 'deck-section');
+    box.append(element('h3', null, `Drills · ${drills.length}`));
+    box.append(element('p', 'subtle', 'The position comes back without your move and without what happened next. Decide first, then reveal.'));
+    drills.slice().reverse().forEach((note) => box.append(drillRow(note)));
+    target.append(box);
+  }
+
+  if (rest.length) {
+    const box = element('section', 'deck-section');
+    box.append(element('h3', null, 'Notes'));
+    rest.slice().reverse().forEach((note) => box.append(noteRow(note)));
+    target.append(box);
+  }
+  target.append(element('div', 'drill-stage'));
+}
+
+function noteLabel(note) {
+  const game = state.games.find((item) => item.id === note.game_id);
+  return `${game ? `${game.deck_label} · ${resultLabel(game.result)}` : note.game_id} · frame ${note.frame_index ?? '—'}`;
+}
+
+function noteRow(note) {
+  const item = element('article', 'training-note');
+  const open = element('button', 'text-button', noteLabel(note));
+  open.type = 'button';
+  open.addEventListener('click', async () => {
+    await openGame(note.game_id);
+    if (note.frame_index !== null) changeFrame(note.frame_index);
+    setView('matches');
   });
+  item.append(open, element('p', null, note.body), element('small', null, listText(note.tags)));
+  return item;
+}
+
+function drillRow(note) {
+  const item = element('article', 'training-note drill');
+  const open = element('button', 'text-button', noteLabel(note));
+  open.type = 'button';
+  open.addEventListener('click', () => startDrill(note));
+  item.append(open, element('small', null, 'Your note stays hidden until you answer.'));
+  return item;
+}
+
+// The point of the drill is that the answer is not on screen: the board is shown at the
+// marked frame, the move that was made and the note are withheld until the player commits.
+async function startDrill(note) {
+  const stage = $('.drill-stage');
+  stage.replaceChildren(element('p', 'subtle', 'Loading the position…'));
+  try {
+    const detail = await request(`/api/games/${encodeURIComponent(note.game_id)}`);
+    const page = await request(`/api/games/${encodeURIComponent(note.game_id)}/frames?start=${note.frame_index}&limit=1`);
+    const frame = page.frames?.[0];
+    if (!frame) throw new Error('That frame is no longer stored.');
+    Object.assign(state.cards, detail.cards ?? {});
+    await loadCards(frameCardIds(frame));
+    warmArt(frameCardIds(frame));
+    stage.replaceChildren();
+    stage.append(element('p', 'eyebrow', 'DRILL'),
+      element('h3', null, `Turn ${frame.turn ?? '—'} · ${listText([frame.phase, frame.step])}`));
+
+    const entered = new Set();
+    const seats = (frame.players ?? []).map((player) => player.seat);
+    const selfSeat = detail.self_seat;
+    const opponentSeat = seats.find((seat) => seat !== selfSeat) ?? (selfSeat === 1 ? 2 : 1);
+    const board = element('div', 'board');
+    board.append(sideBand(frame, opponentSeat, false, entered, null));
+    board.append(sharedBand(frame, entered));
+    board.append(sideBand(frame, selfSeat, true, entered, null));
+    stage.append(board);
+
+    const form = document.createElement('form'); form.className = 'note-form';
+    const answer = document.createElement('textarea');
+    answer.maxLength = 2000; answer.required = true;
+    answer.placeholder = 'What do you play here, and what are you afraid of?';
+    const submit = element('button', 'button primary', 'Reveal what you did'); submit.type = 'submit';
+    form.append(element('label', null, 'Your answer, before looking'), answer, submit);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      revealDrill(stage, frame, note, answer.value.trim());
+    });
+    stage.append(form);
+    stage.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+  } catch (error) {
+    stage.replaceChildren(element('p', 'gap', error.message));
+  }
+}
+
+function revealDrill(stage, frame, note, answer) {
+  const box = element('section', 'drill-reveal');
+  box.append(element('h4', null, 'What the log records'));
+  box.append(actionList('Taken', frame.action ? [frame.action] : [], frame.source_line));
+  box.append(actionList('Available', frame.available_actions ?? frame.actions ?? [], frame.source_line));
+  box.append(element('h4', null, 'What you wrote at the time'));
+  box.append(element('p', null, note.body));
+  if (answer) {
+    box.append(element('h4', null, 'What you just said'));
+    box.append(element('p', null, answer));
+  }
+  box.append(element('small', null, 'The app does not score this. Comparing the two is the exercise.'));
+  const again = element('button', 'text-button', 'Open this position in the replay');
+  again.type = 'button';
+  again.addEventListener('click', async () => {
+    await openGame(note.game_id);
+    changeFrame(note.frame_index);
+    setView('matches');
+  });
+  box.append(again);
+  stage.append(box);
+  box.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
 }
 
 // ---------------------------------------------------------------- shell
