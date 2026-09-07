@@ -137,6 +137,35 @@ def action_choice(action):
             "instance_id": action.get("instanceId"), "ability_id": action.get("abilityGrpId")}
 
 
+def relabel_action(action):
+    """Rebuild an action's label from its recorded type.
+
+    Labels written at import time freeze the wording of that build. Deriving them on read
+    keeps one source of truth — and matters beyond cosmetics, because the same frame is
+    what the model receives.
+    """
+    if not isinstance(action, dict):
+        return action
+    kind = str(action.get("type", ""))
+    if kind == "PerformActionResp":
+        choices = action.get("choices") or []
+        label = " / ".join(ACTION_NAMES.get(choice.get("type"), choice.get("type") or "Action")
+                           for choice in choices if isinstance(choice, dict))
+        return {**action, "label": label or "Take action",
+                "choices": [{**choice, "label": ACTION_NAMES.get(choice.get("type"), choice.get("label"))}
+                            for choice in choices if isinstance(choice, dict)]}
+    if kind in ACTION_NAMES:
+        return {**action, "label": ACTION_NAMES[kind]}
+    if kind not in CLIENT_NAMES:
+        return action
+    label = CLIENT_NAMES[kind]
+    if kind == "MulliganResp":
+        response = (action.get("selection") or {}).get("mulliganResp", {}).get("decision", "")
+        label = {"MulliganOption_Keep": "Kept the hand", "MulliganOption_AcceptHand": "Kept the hand",
+                 "MulliganOption_Mulligan": "Took a mulligan"}.get(response, label)
+    return {**action, "label": label}
+
+
 def decision(message, line):
     kind = message["type"].removeprefix("ClientMessageType_")
     if kind == "PerformActionResp":

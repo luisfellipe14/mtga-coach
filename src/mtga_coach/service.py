@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import analysis, coach, timeline
-from .ingest import format_name
+from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
 from .secrets import KeyStore
@@ -212,8 +212,26 @@ class CoachService:
         if self.store.game_summary(game_id) is None:
             raise KeyError("game not found")
         limit = max(1, min(int(limit), 100))
-        frames = self.store.frames(game_id, max(0, int(start)), limit)
+        frames = [self._relabel(frame) for frame in self.store.frames(game_id, max(0, int(start)), limit)]
         return {"game_id": game_id, "start": start, "count": len(frames), "frames": frames}
+
+    @staticmethod
+    def _relabel(frame: dict) -> dict:
+        """Derive every label on read, so a frame stored by an earlier build reads correctly.
+
+        This is not only cosmetic: the same frame is what the sanitised export hands to the
+        model, and a stale label would travel with it.
+        """
+        frame = dict(frame)
+        if isinstance(frame.get("action"), dict):
+            frame["action"] = relabel_action(frame["action"])
+        for key in ("actions", "available_actions"):
+            if isinstance(frame.get(key), list):
+                frame[key] = [relabel_action(item) for item in frame[key]]
+        if isinstance(frame.get("events"), list):
+            frame["events"] = [{**event, "label": timeline.KIND_LABELS.get(event.get("kind"), event.get("label"))}
+                               if isinstance(event, dict) else event for event in frame["events"]]
+        return frame
 
     def timeline(self, game_id: str) -> dict:
         """Turn-by-turn narrative built from the annotations, not from the board snapshots."""
@@ -297,6 +315,7 @@ class CoachService:
         frame = self.store.frame(game_id, index)
         if frame is None:
             raise ValueError("frame not found")
+        frame = self._relabel(frame)
         seat = game.get("self_seat")
         deck_counts = {item["id"]: item["quantity"] for item in game.get("deck", {}).get("main", [])
                        if isinstance(item, dict) and isinstance(item.get("id"), int)}
@@ -654,6 +673,7 @@ class CoachService:
         if not isinstance(game.get("self_seat"), int) or game["self_seat"] <= 0:
             return {"eligible": False, "context": {}, "text": "No context without a verifiable identification of the player."}
         selected = self.store.frame(game_id, index)
+        selected = self._relabel(selected) if selected else None
         if selected is None or selected.get("quality") in {"degraded", "blocked"}:
             return {"eligible": False, "context": {}, "text": "No context for this stretch."}
         prior_reveals = self._prior_match_reveals(game)

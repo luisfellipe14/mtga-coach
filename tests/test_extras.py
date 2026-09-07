@@ -225,3 +225,36 @@ class CoachErrorTests(unittest.TestCase):
             message = "overloaded_error: the service is busy"
 
         self.assertIn("overloaded_error", coach._message(Other()))
+
+
+class RelabelTests(unittest.TestCase):
+    """Labels are derived on read; a frame stored by an earlier build must read correctly."""
+
+    def test_a_stored_action_label_is_rebuilt_from_its_type(self):
+        from mtga_coach.ingest import relabel_action
+
+        stale = {"type": "SelectNResp", "label": "Escolher cartas", "card_ids": []}
+        self.assertEqual(relabel_action(stale)["label"], "Choose cards")
+
+    def test_a_mulligan_label_follows_the_recorded_decision(self):
+        from mtga_coach.ingest import relabel_action
+
+        kept = {"type": "MulliganResp", "label": "qualquer coisa",
+                "selection": {"mulliganResp": {"decision": "MulliganOption_AcceptHand"}}}
+        took = {"type": "MulliganResp", "label": "",
+                "selection": {"mulliganResp": {"decision": "MulliganOption_Mulligan"}}}
+        self.assertEqual(relabel_action(kept)["label"], "Kept the hand")
+        self.assertEqual(relabel_action(took)["label"], "Took a mulligan")
+
+    def test_a_performed_action_joins_the_names_of_its_choices(self):
+        from mtga_coach.ingest import relabel_action
+
+        action = {"type": "PerformActionResp", "label": "Jogar terreno",
+                  "choices": [{"type": "Play"}, {"type": "Pass"}]}
+        self.assertEqual(relabel_action(action)["label"], "Play land / Pass priority")
+
+    def test_an_unknown_action_type_keeps_what_was_stored(self):
+        from mtga_coach.ingest import relabel_action
+
+        action = {"type": "SomethingNew", "label": "whatever"}
+        self.assertEqual(relabel_action(action)["label"], "whatever")

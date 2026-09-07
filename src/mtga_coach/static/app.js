@@ -55,7 +55,7 @@ export function adjacentDecisionPosition(frames, currentPosition, direction) {
 const state = {
   summary: null, games: [], mode: 'BO1', detail: null, framePosition: 0, cards: {}, deckCards: {},
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
-  coachAnswer: null, coachMode: 'explain', coachBusy: false,
+  coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -219,22 +219,6 @@ async function frameAt(position) {
   return state.frameCache.get(position) ?? null;
 }
 
-function zoneBlock(zone, title) {
-  const collapsible = ['Library', 'Graveyard', 'Exile', 'Revealed', 'Command'].includes(zone.type);
-  const block = element(collapsible ? 'details' : 'section', `zone zone-${String(zone.type).toLowerCase()}`);
-  if (collapsible) block.open = false;
-  block.append(element(collapsible ? 'summary' : 'h4', null, title));
-  const objects = zone.objects ?? [];
-  if (objects.length) {
-    const cards = element('div', 'card-strip');
-    objects.forEach((object) => cards.append(cardTile(object)));
-    block.append(cards);
-  }
-  if (zone.hidden_count) block.append(element('small', 'hidden-count', `${zone.hidden_count} hidden card${zone.hidden_count === 1 ? '' : 's'}`));
-  if (!objects.length && !zone.hidden_count) block.append(element('small', 'empty-zone', 'No known objects.'));
-  return block;
-}
-
 function artEnabled() { return Boolean(state.summary?.art?.enabled); }
 
 function applyArt(node, cardId) {
@@ -243,29 +227,249 @@ function applyArt(node, cardId) {
   node.style.backgroundImage = `linear-gradient(to right, rgba(12,22,18,.92) 42%, rgba(12,22,18,.45)), url("/art/${encodeURIComponent(cardId)}.jpg")`;
 }
 
-function cardTile(object) {
+// Untapped lands the player controls, by the colour the card can produce. This is what the
+// board shows; it is not a claim about total available mana (creatures, rocks and abilities
+// also make mana), so the interface says "untapped lands" and never "you could cast this".
+function untappedMana(frame, seat) {
+  const battlefield = zoneOf(frame, 'Battlefield', 0);
+  const lands = objectsFor(battlefield, seat).filter((object) => {
+    const card = state.cards[object.card_id];
+    return card?.is_land && !object.tapped;
+  });
+  const colours = {};
+  lands.forEach((object) => {
+    (state.cards[object.card_id]?.colors ?? []).forEach((colour) => {
+      colours[colour] = (colours[colour] ?? 0) + 1;
+    });
+  });
+  return { count: lands.length, colours };
+}
+
+function manaLine(frame, seat) {
+  const mana = untappedMana(frame, seat);
+  const parts = Object.entries(mana.colours).sort().map(([colour, count]) => `${colour}×${count}`);
+  const line = element('p', 'mana-available');
+  line.append(element('strong', null, `${mana.count}`), element('span', null,
+    ` untapped land${mana.count === 1 ? '' : 's'}${parts.length ? ` · ${parts.join(' ')}` : ''}`));
+  return line;
+}
+
+const ATTACK_STATES = new Set(['AttackState_Attacking', 'AttackState_Declared']);
+
+function combatPanel(frame, selfSeat) {
+  if (!['DeclareAttack', 'DeclareBlock', 'CombatDamage'].includes(frame.step)) return null;
+  const battlefield = zoneOf(frame, 'Battlefield', 0);
+  const attackers = (battlefield?.objects ?? []).filter((object) => ATTACK_STATES.has(object.attack_state));
+  if (!attackers.length) return null;
+  const attackerSeat = attackers[0].controller ?? attackers[0].owner;
+  const defenderSeat = attackerSeat === selfSeat ? (selfSeat === 1 ? 2 : 1) : selfSeat;
+  const defenderLife = frame.players?.find((player) => player.seat === defenderSeat)?.life;
+  const blocked = attackers.filter((object) => object.block_state === 'BlockState_Blocked');
+  const power = (object) => (Number.isFinite(Number(object.power)) ? Number(object.power) : 0);
+  const total = attackers.reduce((sum, object) => sum + power(object), 0);
+  const unblockedDamage = attackers.filter((object) => object.block_state !== 'BlockState_Blocked')
+    .reduce((sum, object) => sum + power(object), 0);
+
+  const panel = element('section', 'combat-panel');
+  panel.append(element('h4', null, attackerSeat === selfSeat ? 'You are attacking' : 'You are being attacked'));
+  const list = element('div', 'combat-list');
+  attackers.forEach((object) => {
+    const row = element('div', `combat-row${object.block_state === 'BlockState_Blocked' ? ' blocked' : ''}`);
+    row.append(element('strong', null, cardName(object.card_id)),
+      element('span', null, `${object.power ?? '?'}/${object.toughness ?? '?'}${object.block_state === 'BlockState_Blocked' ? ' · blocked' : ' · unblocked'}`));
+    list.append(row);
+  });
+  panel.append(list);
+  const summary = element('p', 'combat-summary');
+  summary.append(element('span', null,
+    `${attackers.length} attacker${attackers.length === 1 ? '' : 's'} · ${total} power declared · ${blocked.length} blocked`));
+  if (typeof defenderLife === 'number') {
+    const lethal = unblockedDamage >= defenderLife;
+    summary.append(element('span', lethal ? 'combat-lethal' : null,
+      ` · ${unblockedDamage} would land on ${defenderLife} life${lethal ? ' — lethal as blocked here' : ''}`));
+  }
+  panel.append(summary);
+  panel.append(element('small', null,
+    'Power as recorded in this frame. Combat tricks, first strike and damage prevention are not simulated.'));
+  return panel;
+}
+
+// Stepping one game state at a time means 500+ stops; most carry no decision and no event.
+const STEP_MODES = [['all', 'All frames'], ['decision', 'Decisions'], ['event', 'Events']];
+
+function stepMatches(row, mode) {
+  if (mode === 'decision') return Boolean(row.has_action);
+  if (mode === 'event') return Boolean(row.event_kinds?.length);
+  return true;
+}
+
+function nextStep(index, position, direction) {
+  for (let at = position + direction; at >= 0 && at < index.length; at += direction) {
+    if (stepMatches(index[at], state.stepMode)) return at;
+  }
+  return null;
+}
+
+function stepControls(index, position) {
+  const box = element('div', 'step-modes');
+  box.append(element('span', 'turn-strip-label', 'Step by'));
+  STEP_MODES.forEach(([key, label]) => {
+    const count = key === 'all' ? index.length : index.filter((row) => stepMatches(row, key)).length;
+    const button = element('button', `turn-mark${state.stepMode === key ? ' active' : ''}`, `${label} (${count})`);
+    button.type = 'button';
+    button.addEventListener('click', () => { state.stepMode = key; renderReplay(); });
+    box.append(button);
+  });
+  return box;
+}
+
+function zoneOf(frame, kind, owner) {
+  return (frame.zones ?? []).find((zone) => zone.type === kind && zone.owner === owner) ?? null;
+}
+
+function objectsFor(zone, seat, key = 'controller') {
+  return (zone?.objects ?? []).filter((object) => (object[key] ?? object.owner) === seat);
+}
+
+const COMBAT_CLASS = {
+  AttackState_Attacking: 'attacking', AttackState_Declared: 'attacking',
+  BlockState_Blocked: 'blocked',
+};
+
+function cardTile(object, entered) {
   const card = state.cards[object.card_id];
   const colors = card?.colors?.length ? card.colors.join('').toLowerCase() : 'unknown';
-  const tile = element('button', `card-tile mana-${colors}`, ''); tile.type = 'button';
+  const classes = ['card-tile', `mana-${colors}`];
+  if (object.tapped) classes.push('tapped');
+  if (entered) classes.push('entered');
+  const combat = COMBAT_CLASS[object.attack_state] || COMBAT_CLASS[object.block_state];
+  if (combat) classes.push(combat);
+  if (object.object_type === 'GameObjectType_Token') classes.push('token');
+  const tile = element('button', classes.join(' '), ''); tile.type = 'button';
   applyArt(tile, object.card_id);
   tile.title = 'Inspect card';
-  tile.append(element('span', 'mana-line', card?.mana_cost || '—'), element('strong', null, cardName(object.card_id)));
+  const top = element('span', 'tile-top');
+  top.append(element('span', 'mana-line', card?.mana_cost || '—'));
+  const marks = [
+    object.tapped ? '↻' : null,
+    COMBAT_CLASS[object.attack_state] ? '⚔' : null,
+    COMBAT_CLASS[object.block_state] ? '🛡' : null,
+    object.summoning_sickness ? '✦' : null,
+  ].filter(Boolean).join(' ');
+  if (marks) top.append(element('span', 'tile-marks', marks));
+  tile.append(top, element('strong', null, cardName(object.card_id)));
   const hasPower = object.power !== null && object.power !== undefined && String(object.power).trim() !== '';
   const hasToughness = object.toughness !== null && object.toughness !== undefined && String(object.toughness).trim() !== '';
-  const bits = [object.tapped ? 'Tapped' : null, hasPower || hasToughness ? `${hasPower ? object.power : '?'}/${hasToughness ? object.toughness : '?'}` : null].filter(Boolean);
+  const bits = [
+    hasPower || hasToughness ? `${hasPower ? object.power : '?'}/${hasToughness ? object.toughness : '?'}` : null,
+    object.damage ? `${object.damage} dmg` : null,
+    object.object_type === 'GameObjectType_Token' ? 'token' : null,
+  ].filter(Boolean);
   if (bits.length) tile.append(element('small', null, bits.join(' · ')));
   tile.addEventListener('click', () => inspectCard(object.card_id));
   return tile;
 }
 
-function battlefieldZones(frame) {
-  const battlefield = frame.zones?.find((zone) => zone.type === 'Battlefield' && zone.owner === 0);
-  if (!battlefield) return [];
-  const selfSeat = state.detail.self_seat;
-  const controller = (object) => object.controller ?? object.owner;
-  const own = { ...battlefield, objects: battlefield.objects?.filter((object) => controller(object) === selfSeat) ?? [] };
-  const opponent = { ...battlefield, objects: battlefield.objects?.filter((object) => !own.objects.includes(object)) ?? [] };
-  return [zoneBlock(own, 'Your battlefield'), zoneBlock(opponent, 'Opponent battlefield')];
+function cardStrip(objects, entered, emptyText) {
+  if (!objects.length) return element('p', 'zone-empty', emptyText);
+  const strip = element('div', 'card-strip');
+  objects.forEach((object) => strip.append(cardTile(object, entered.has(object.instance_id))));
+  return strip;
+}
+
+// A zone the player cannot read is a number, not an empty box. Clicking one that holds
+// visible cards opens it; a purely hidden zone has nothing to open.
+function zoneChip(label, zone, entered, expandable = true) {
+  const total = zone?.total_count ?? ((zone?.objects?.length ?? 0) + (zone?.hidden_count ?? 0));
+  const visible = zone?.objects?.length ?? 0;
+  const chip = element(visible && expandable ? 'details' : 'div', 'zone-chip');
+  const head = element(visible && expandable ? 'summary' : 'span', 'zone-chip-head');
+  head.append(element('span', 'zone-chip-name', label), element('strong', null, String(total)));
+  chip.append(head);
+  if (visible && expandable) chip.append(cardStrip(zone.objects, entered, ''));
+  if (!total) chip.classList.add('empty');
+  return chip;
+}
+
+function lifeDelta(frame, previous, seat) {
+  const now = frame.players?.find((player) => player.seat === seat)?.life;
+  const before = previous?.players?.find((player) => player.seat === seat)?.life;
+  if (typeof now !== 'number' || typeof before !== 'number' || now === before) return null;
+  return now - before;
+}
+
+function sideBand(frame, seat, isSelf, entered, previous) {
+  const band = element('section', `board-band ${isSelf ? 'self' : 'opponent'}`);
+  const head = element('header', 'band-head');
+  const player = frame.players?.find((item) => item.seat === seat);
+  const title = element('div', 'band-title');
+  title.append(element('strong', null, isSelf ? 'You' : 'Opponent'));
+  if (frame.active_player === seat) title.append(element('span', 'band-flag', 'active turn'));
+  if (frame.priority_player === seat) title.append(element('span', 'band-flag', 'priority'));
+  const life = element('div', 'band-life', `${player?.life ?? '—'}`);
+  const delta = lifeDelta(frame, previous, seat);
+  if (delta !== null) life.append(element('span', `life-delta ${delta > 0 ? 'up' : 'down'}`, `${delta > 0 ? '+' : ''}${delta}`));
+  head.append(title, life);
+  band.append(head);
+
+  const battlefield = zoneOf(frame, 'Battlefield', 0);
+  band.append(manaLine(frame, seat));
+  band.append(cardStrip(objectsFor(battlefield, seat), entered, 'Nothing on the battlefield.'));
+
+  const hand = zoneOf(frame, 'Hand', seat);
+  if (isSelf) {
+    const label = element('p', 'band-label', `Hand · ${hand?.total_count ?? 0}`);
+    band.append(label, cardStrip(hand?.objects ?? [], entered, 'Empty hand.'));
+  }
+
+  const exile = zoneOf(frame, 'Exile', 0);
+  const chips = element('div', 'zone-chips');
+  if (!isSelf) chips.append(zoneChip('Hand', hand, entered, false));
+  chips.append(zoneChip('Library', zoneOf(frame, 'Library', seat), entered, false));
+  chips.append(zoneChip('Graveyard', zoneOf(frame, 'Graveyard', seat), entered));
+  chips.append(zoneChip('Exile', { objects: objectsFor(exile, seat, 'owner'), hidden_count: 0 }, entered));
+  chips.append(zoneChip('Revealed', zoneOf(frame, 'Revealed', seat), entered));
+  chips.append(zoneChip('Sideboard', zoneOf(frame, 'Sideboard', seat), entered));
+  band.append(chips);
+  return band;
+}
+
+function sharedBand(frame, entered) {
+  const stack = zoneOf(frame, 'Stack', 0);
+  const command = zoneOf(frame, 'Command', 0);
+  const band = element('section', 'board-band shared');
+  const objects = [...(stack?.objects ?? []), ...(command?.objects ?? [])];
+  band.append(element('p', 'band-label', `Stack · ${stack?.total_count ?? 0}`));
+  band.append(cardStrip(objects, entered, 'Stack empty.'));
+  return band;
+}
+
+function enteredSince(frame, previous) {
+  if (!previous) return new Set();
+  const before = new Set();
+  (previous.zones ?? []).forEach((zone) => (zone.objects ?? []).forEach((object) => before.add(object.instance_id)));
+  const now = new Set();
+  (frame.zones ?? []).forEach((zone) => (zone.objects ?? []).forEach((object) => {
+    if (!before.has(object.instance_id)) now.add(object.instance_id);
+  }));
+  return now;
+}
+
+function turnStrip(index, position) {
+  // 538 raw frames mean nothing to read; the turn each one belongs to does.
+  const first = new Map();
+  index.forEach((row, order) => { if (!first.has(row.turn)) first.set(row.turn, order); });
+  const strip = element('div', 'turn-strip');
+  strip.append(element('span', 'turn-strip-label', 'Turn'));
+  const currentTurn = index[position]?.turn;
+  [...first.entries()].forEach(([turn, start]) => {
+    const button = element('button', `turn-mark${turn === currentTurn ? ' active' : ''}`, String(turn));
+    button.type = 'button';
+    button.title = `Jump to the start of turn ${turn}`;
+    button.addEventListener('click', () => changeFrame(start));
+    strip.append(button);
+  });
+  return strip;
 }
 
 async function renderReplay() {
@@ -276,35 +480,39 @@ async function renderReplay() {
   const position = Math.max(0, Math.min(state.framePosition, Math.max(index.length - 1, 0)));
   state.framePosition = position;
   const frame = index.length ? await frameAt(position) : null;
+  const previous = position > 0 ? await frameAt(position - 1) : null;
   target.replaceChildren();
   if (!frame) { empty(target, 'No reconstructed frames.', 'The log recorded no position safe enough to replay.'); renderSidebar(null); return; }
   await loadCards(frameCardIds(frame));
   const controls = element('div', 'replay-controls');
-  const back = element('button', 'icon-button', '←'); back.type = 'button'; back.disabled = position === 0; back.addEventListener('click', () => changeFrame(position - 1));
-  const next = element('button', 'icon-button', '→'); next.type = 'button'; next.disabled = position >= index.length - 1; next.addEventListener('click', () => changeFrame(position + 1));
+  const previousStep = nextStep(index, position, -1);
+  const followingStep = nextStep(index, position, 1);
+  const back = element('button', 'icon-button', '←'); back.type = 'button'; back.disabled = previousStep === null; back.addEventListener('click', () => changeFrame(previousStep));
+  const next = element('button', 'icon-button', '→'); next.type = 'button'; next.disabled = followingStep === null; next.addEventListener('click', () => changeFrame(followingStep));
   const slider = document.createElement('input'); slider.type = 'range'; slider.min = '0'; slider.max = String(Math.max(index.length - 1, 0)); slider.value = String(position); slider.setAttribute('aria-label', 'Replay frame'); slider.addEventListener('change', () => changeFrame(Number(slider.value)));
-  controls.append(back, slider, next, element('span', 'frame-count', `Frame ${position + 1}/${index.length}`)); target.append(controls);
+  controls.append(back, slider, next, element('span', 'frame-count', `Frame ${position + 1}/${index.length}`));
+  target.append(controls, turnStrip(index, position), stepControls(index, position));
   const heading = element('div', 'position-heading');
   heading.append(element('strong', null, `Turn ${frame.turn ?? '—'}`), element('span', null, listText([frame.phase, frame.step])), element('span', null, `Source line ${frame.source_line ?? 'unknown'}`));
   target.append(heading);
   const warning = frame.warnings?.[0] ?? '';
   if (frame.quality !== 'complete' || warning) target.append(element('div', `quality-notice ${frame.quality}`, warning || qualityLabel(frame.quality)));
-  const lives = element('div', 'life-row');
-  (frame.players ?? []).forEach((player) => lives.append(element('div', player.is_self ? 'life self' : 'life', `${player.is_self ? 'You' : 'Opponent'} · ${player.life ?? '—'} life`)));
-  target.append(lives);
   if (frame.events?.length) {
     const strip = element('div', 'event-strip');
     strip.append(element('h4', null, 'What happened here'));
     frame.events.forEach((event) => strip.append(element('span', `event-chip event-${event.kind}`, describeEvent(event))));
     target.append(strip);
   }
+  const entered = enteredSince(frame, previous);
+  const seats = (frame.players ?? []).map((player) => player.seat);
+  const selfSeat = detail.self_seat;
+  const opponentSeat = seats.find((seat) => seat !== selfSeat) ?? (selfSeat === 1 ? 2 : 1);
   const board = element('div', 'board');
-  battlefieldZones(frame).forEach((zone) => board.append(zone));
-  const otherZones = frame.zones?.filter((zone) => !(zone.type === 'Battlefield' && zone.owner === 0)) ?? [];
-  otherZones.forEach((zone) => {
-    const owner = zone.owner === 0 ? 'Shared zone' : (zone.owner === state.detail.self_seat ? 'You' : 'Opponent');
-    board.append(zoneBlock(zone, `${owner} · ${zone.type}`));
-  });
+  board.append(sideBand(frame, opponentSeat, false, entered, previous));
+  const combat = combatPanel(frame, selfSeat);
+  board.append(combat ?? sharedBand(frame, entered));
+  if (combat) board.append(sharedBand(frame, entered));
+  board.append(sideBand(frame, selfSeat, true, entered, previous));
   target.append(board);
   renderSidebar(frame);
 }
@@ -1028,8 +1236,9 @@ function boot() {
   $('#experiment-form').addEventListener('submit', saveExperiment);
   document.addEventListener('keydown', (event) => {
     if (!state.detail || $('#replay-section').hidden || (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
-    if (event.key === 'ArrowLeft') { event.preventDefault(); changeFrame(state.framePosition - 1); }
-    if (event.key === 'ArrowRight') { event.preventDefault(); changeFrame(state.framePosition + 1); }
+    const index = state.detail.frame_index ?? [];
+    if (event.key === 'ArrowLeft') { event.preventDefault(); const at = nextStep(index, state.framePosition, -1); if (at !== null) changeFrame(at); }
+    if (event.key === 'ArrowRight') { event.preventDefault(); const at = nextStep(index, state.framePosition, 1); if (at !== null) changeFrame(at); }
   });
   refresh();
   setInterval(() => { if (state.summary?.capture?.running) refresh(); }, 15000);
