@@ -207,6 +207,10 @@ class LogIngestor:
         self.inventory = None
         self.wallet = []
         self.rank_points = []
+        # Arena stopped writing the collection, but a card in a deck the player registered
+        # is a card the player owns. That is a floor, never the collection, and it only
+        # ever covers what they actually play.
+        self.owned = {}
         self.draft = DraftTracker()
         self._clock = None
         self.current_match, self.current_key = None, None
@@ -236,7 +240,7 @@ class LogIngestor:
                 "matches": deepcopy(self.matches), "named_decks": deepcopy(self.named_decks),
                 "account": dict(self.account), "rank": deepcopy(self.rank),
                 "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet),
-                "rank_points": deepcopy(self.rank_points),
+                "rank_points": deepcopy(self.rank_points), "owned": dict(self.owned),
                 "draft": self.draft.state() if self.draft.active else None,
                 "draft_raw": self.draft.drain_raw() if drain_raw else []}
 
@@ -261,6 +265,7 @@ class LogIngestor:
         # The draft is written outside the game protocol and outside a match, so it is
         # offered every record before the game handlers look at any of them.
         self.draft.consume(record)
+        self._scan_owned(record["payload"])
         # Records arrive in order, so the most recent timestamp seen bounds anything that
         # carries none of its own — an inventory reading, for one.
         stamp = read_timestamp(record["payload"].get("timestamp")) if isinstance(record["payload"], dict) else None
@@ -276,6 +281,47 @@ class LogIngestor:
         if client_id:
             self._self_user_id = client_id
             self.account["user_hash"] = _hashed(client_id)
+
+    def _scan_owned(self, payload, parent=None, depth=0):
+        """Count registered lists towards the collection floor.
+
+        The parent key is what separates a deck the player registered from the catalogue of
+        preconstructed decks the client also writes, and the walker that feeds the other
+        handlers has already thrown it away — so this one keeps it. Only a list under
+        `CourseDeck`, or under the id of a deck the player built, counts. Reading the rest
+        as owned inflates the floor from 354 provable cards to 9,446, measured on a real log.
+        """
+        if depth > 10:
+            return
+        if isinstance(payload, dict):
+            if (isinstance(payload.get("MainDeck"), list) and payload["MainDeck"]
+                    and (parent == "CourseDeck" or parent in self.named_decks)):
+                self._absorb_owned(payload)
+            for key, child in payload.items():
+                if isinstance(child, str) and child[:1] in ("{", "["):
+                    try:
+                        self._scan_owned(json.loads(child), key, depth + 1)
+                    except (ValueError, RecursionError):
+                        pass
+                elif isinstance(child, (dict, list)):
+                    self._scan_owned(child, key, depth + 1)
+        elif isinstance(payload, list):
+            for child in payload:
+                self._scan_owned(child, parent, depth + 1)
+
+    def _absorb_owned(self, deck):
+        """The largest quantity of each card ever registered at once is the floor."""
+        counts = {}
+        for section in ("MainDeck", "Sideboard"):
+            for item in deck.get(section) or []:
+                if not isinstance(item, dict):
+                    continue
+                card_id, quantity = item.get("cardId"), item.get("quantity", 1)
+                if isinstance(card_id, int) and isinstance(quantity, int) and card_id > 0:
+                    counts[card_id] = counts.get(card_id, 0) + quantity
+        for card_id, quantity in counts.items():
+            if quantity > self.owned.get(card_id, 0):
+                self.owned[card_id] = quantity
 
     def _on_deck_summary(self, value, line, record):
         uid = value.get("DeckId")

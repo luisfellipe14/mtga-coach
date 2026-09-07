@@ -192,14 +192,22 @@ def lookup_by_name(name, card_database_path=None):
         con.close()
 
 
-def wildcard_cost(entries):
+def wildcard_cost(entries, owned=None):
     """Wildcards a list of {'card', 'quantity'} entries would cost, by rarity.
 
-    It counts what the list requires, not what is missing: Arena stopped publishing the
-    owned collection in the log, so the app cannot know which copies are already owned.
+    Arena stopped writing the collection, so the honest answer is a pair of bounds rather
+    than a number. `cost` is what the whole list would take from zero. `net` subtracts the
+    copies the log has actually seen the player register in a deck, which is a floor on
+    what they own and never the collection: on a real account it covered 366 cards against
+    a collection of more than sixteen thousand. So `net` is an upper bound that happens to
+    be tight for a list built out of cards the player already plays, and `cost` is the
+    bound that holds when the app knows nothing.
     """
+    owned = owned or {}
     cost = {rarity: 0 for rarity in WILDCARD_RARITIES}
+    net = {rarity: 0 for rarity in WILDCARD_RARITIES}
     unresolved = 0
+    proven = 0
     for entry in entries:
         card = entry.get("card") or {}
         quantity = int(entry.get("quantity", 0))
@@ -207,6 +215,15 @@ def wildcard_cost(entries):
             unresolved += quantity
             continue
         rarity = card.get("rarity")
-        if rarity in cost:
-            cost[rarity] += quantity
-    return {"cost": cost, "unresolved": unresolved}
+        if rarity not in cost:
+            continue
+        cost[rarity] += quantity
+        held = min(quantity, int(owned.get(int(card.get("id") or 0), 0)))
+        proven += held
+        net[rarity] += quantity - held
+    return {"cost": cost, "net": net, "unresolved": unresolved, "proven_owned": proven,
+            "known_cards": len(owned),
+            "note": ("Arena no longer writes the collection. The first figure is what the list "
+                     "costs from nothing; the second subtracts only the copies this app has "
+                     "watched you register in a deck, which is a floor on what you own and "
+                     "usually a small part of it.")}

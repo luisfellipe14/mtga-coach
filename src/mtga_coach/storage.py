@@ -166,6 +166,9 @@ class ReviewStore:
                 wc_common INTEGER, wc_uncommon INTEGER, wc_rare INTEGER, wc_mythic INTEGER,
                 vault INTEGER, PRIMARY KEY (recorded_at, gems, gold)
             );
+            CREATE TABLE IF NOT EXISTS owned_cards (
+                card_id INTEGER PRIMARY KEY, copies INTEGER NOT NULL, seen_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS rank_history (
                 recorded_at TEXT NOT NULL, track TEXT NOT NULL, class TEXT,
                 level INTEGER, step INTEGER, wins INTEGER, losses INTEGER,
@@ -288,6 +291,12 @@ class ReviewStore:
                 (point["at"], point.get("Gems"), point.get("Gold"), point.get("WildCardCommons"),
                  point.get("WildCardUnCommons"), point.get("WildCardRares"),
                  point.get("WildCardMythics"), point.get("TotalVaultProgress")))
+        for card_id, copies in (snapshot.get("owned") or {}).items():
+            self.connection.execute(
+                "INSERT INTO owned_cards (card_id, copies, seen_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(card_id) DO UPDATE SET copies=MAX(copies, excluded.copies), "
+                "seen_at=excluded.seen_at",
+                (int(card_id), int(copies), _now()))
         for point in snapshot.get("rank_points") or []:
             if not isinstance(point, dict) or not point.get("at") or not point.get("class"):
                 continue
@@ -662,6 +671,12 @@ class ReviewStore:
                 "SELECT recorded_at, gems, gold, wc_common, wc_uncommon, wc_rare, wc_mythic, vault "
                 "FROM wallet ORDER BY recorded_at").fetchall()
             return [dict(row) for row in rows]
+
+    def owned_cards(self) -> dict[int, int]:
+        """Copies the log proves are owned, by card id. A floor, never the collection."""
+        with self.lock:
+            rows = self.connection.execute("SELECT card_id, copies FROM owned_cards").fetchall()
+        return {int(row["card_id"]): int(row["copies"]) for row in rows}
 
     def rank_history(self, track: str | None = None) -> list[dict]:
         with self.lock:

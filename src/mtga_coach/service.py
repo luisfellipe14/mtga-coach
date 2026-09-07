@@ -559,7 +559,8 @@ class CoachService:
             "flexible_costs": analysis.flexible_costs(entries),
             "wildcards": wildcard_cost(entries + [{"card": cards.get(str(item["id"]), {}),
                                                    "quantity": item.get("quantity", 0)}
-                                                  for item in side if isinstance(item, dict)]),
+                                                  for item in side if isinstance(item, dict)],
+                                        self.store.owned_cards()),
             "karsten_citation": analysis.KARSTEN_2022_CITATION,
             "bo1_caveat": analysis.BO1_SMOOTHING_CAVEAT,
             "card_stats": self.card_stats(deck_id),
@@ -1175,7 +1176,7 @@ class CoachService:
             "lands_recommended": analysis.lands_recommended(average) if average is not None else None,
             "colour_requirements": analysis.colour_requirements(entries),
             "flexible_costs": analysis.flexible_costs(entries),
-            "wildcards": wildcard_cost(full),
+            "wildcards": wildcard_cost(full, self.store.owned_cards()),
             "unresolved": [entry["card"].get("id") for entry in entries
                            if not entry["card"].get("resolved")],
             "karsten_citation": analysis.KARSTEN_2022_CITATION,

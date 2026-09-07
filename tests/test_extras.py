@@ -311,3 +311,34 @@ class RulingsCacheTests(unittest.TestCase):
         cache = RulingsCache(self.root, Many())
         cache.fetch([{"id": 100, "resolved": True}])
         self.assertEqual(len(cache.get(100)), MAX_PER_CARD)
+
+
+class WildcardBoundsTest(unittest.TestCase):
+    """Arena stopped writing the collection, so the answer is a pair of bounds."""
+
+    @staticmethod
+    def card(card_id, rarity):
+        return {"id": card_id, "name": f"Card {card_id}", "resolved": True, "rarity": rarity}
+
+    def test_without_a_floor_both_bounds_are_the_whole_list(self):
+        from mtga_coach.catalog import wildcard_cost
+
+        answer = wildcard_cost([{"card": self.card(1, "rare"), "quantity": 4}])
+        self.assertEqual(answer["cost"]["rare"], 4)
+        self.assertEqual(answer["net"]["rare"], 4)
+        self.assertEqual(answer["proven_owned"], 0)
+
+    def test_copies_the_log_watched_you_register_come_off_the_second_bound(self):
+        from mtga_coach.catalog import wildcard_cost
+
+        answer = wildcard_cost([{"card": self.card(1, "rare"), "quantity": 4}], owned={1: 3})
+        self.assertEqual(answer["cost"]["rare"], 4)
+        self.assertEqual(answer["net"]["rare"], 1)
+        self.assertEqual(answer["proven_owned"], 3)
+
+    def test_the_floor_never_credits_more_copies_than_the_list_asks_for(self):
+        from mtga_coach.catalog import wildcard_cost
+
+        answer = wildcard_cost([{"card": self.card(1, "mythic"), "quantity": 1}], owned={1: 4})
+        self.assertEqual(answer["net"]["mythic"], 0)
+        self.assertEqual(answer["proven_owned"], 1)
