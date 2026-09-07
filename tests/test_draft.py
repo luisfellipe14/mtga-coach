@@ -194,9 +194,28 @@ class AdviceTest(unittest.TestCase):
         self.assertEqual(advice["pick"], 1)
 
     def test_a_card_without_a_published_rate_is_named_not_ranked(self):
-        advice = pick.advise([1, 4], [], self.ratings, self.cards, pick_number=1)
+        # Three of the four cards carry a rate, so 17Lands ranks the pack and the fourth
+        # is named rather than given a number from somewhere else.
+        advice = pick.advise([1, 2, 3, 4], [], self.ratings, self.cards, pick_number=1)
+        self.assertEqual(advice["basis"], "17lands")
         self.assertEqual([item["card_id"] for item in advice["unrated"]], [4])
         self.assertTrue(any("no published rate" in note for note in advice["notes"]))
+
+    def test_a_set_with_no_data_is_ranked_off_the_cards_instead_of_left_silent(self):
+        # A new set has no published rate for a fortnight. Saying nothing about the pack
+        # for two weeks is worse than reading the cards and saying that is what happened.
+        advice = pick.advise([1, 2, 3, 4], [], {}, self.cards, pick_number=1)
+        self.assertEqual(advice["basis"], "structure")
+        self.assertEqual(advice["unrated"], [])
+        self.assertIsNotNone(advice["pick"])
+        self.assertIn("cannot tell a bomb from a trap", advice["caveat"])
+
+    def test_signed_grades_outrank_the_card_text_and_lose_to_a_measurement(self):
+        grades = {cid: {"grade": 5.0} for cid in (1, 2, 3, 4)}
+        opinion = pick.advise([1, 2, 3, 4], [], {}, self.cards, 1, grades=grades)
+        self.assertEqual(opinion["basis"], "community")
+        measured = pick.advise([1, 2, 3, 4], [], self.ratings, self.cards, 1, grades=grades)
+        self.assertEqual(measured["basis"], "17lands")
 
     def test_two_cards_within_the_margin_are_declared_a_close_call(self):
         ratings = dict(self.ratings)

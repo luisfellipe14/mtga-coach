@@ -903,6 +903,66 @@ class CoachService:
             "credit": LIMITED_CREDIT,
         }
 
+    def draft_review(self) -> dict:
+        """Every pick replayed against what the app would have taken, and why.
+
+        This is the part of a draft worth rereading. It is also the part where the app has
+        to be most careful about tone: it did not see the pack under a clock, it does not
+        know the archetype that was open, and on a set this new it is reading card text.
+        Disagreement is a question, never a correction.
+        """
+        state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft()
+        if not state:
+            raise KeyError("no draft stored")
+        picks = [entry for entry in state.get("picks") or [] if entry.get("pack_cards")]
+        if not picks:
+            return {"picks": [], "reason": (
+                "No pick was recorded with the pack it came from, so there is nothing to "
+                "replay. The bot draft only supplies that from the first pack onwards.")}
+        ids = {int(cid) for entry in picks for cid in entry["pack_cards"]}
+        cards = {int(key): value for key, value in self.cards(sorted(ids)).items()}
+        expansion = self._draft_set([], sorted(ids), cards)
+        event = limited_format(state.get("event_name") or "")
+        ratings, table = self._ratings_for(expansion, event, sorted(ids))
+        grades = self.community.grades(expansion) if expansion else {}
+        pool: list[int] = []
+        rows = []
+        agreed = 0
+        for entry in picks:
+            advice = pick.advise(entry["pack_cards"], list(pool), ratings, cards,
+                                 entry.get("pick"), grades=grades)
+            taken = int(entry["card_id"])
+            suggested = advice.get("pick")
+            same = suggested == taken
+            agreed += 1 if same else 0
+            mine = next((item for item in advice["ranked"] if item["card_id"] == taken), None)
+            best = advice["ranked"][0] if advice["ranked"] else None
+            rows.append({
+                "pack": entry.get("pack"), "pick": entry.get("pick"),
+                "taken": taken, "taken_name": (cards.get(taken) or {}).get("name") or f"#{taken}",
+                "suggested": suggested, "suggested_name": advice.get("pick_name"),
+                "agreed": same,
+                "gap": None if not mine or not best else round(best["score"] - mine["score"], 2),
+                "rank_of_yours": (None if not mine else
+                                  1 + [item["card_id"] for item in advice["ranked"]].index(taken)),
+                "why": (advice["ranked"][0]["why"] if best and not same else []),
+                "options": len(advice["ranked"]) + len(advice["unrated"]),
+                "lane": advice["lane"],
+            })
+            pool.append(taken)
+        disagreements = sorted((row for row in rows if not row["agreed"] and row["gap"] is not None),
+                               key=lambda row: -row["gap"])
+        return {
+            "picks": rows, "agreed": agreed, "of": len(rows),
+            "expansion": expansion, "table": table, "basis": pick.advise(
+                picks[0]["pack_cards"], [], ratings, cards, 1, grades=grades)["basis"],
+            "biggest": disagreements[:5],
+            "cards": {str(cid): card for cid, card in cards.items()},
+            "note": ("The app is replaying with the whole pool visible in hindsight and no clock. "
+                     "Where it disagrees, the question is which of the two readings was right — "
+                     "it did not sit at the table."),
+        }
+
     def draft_deck(self) -> dict:
         """The pool turned into a registrable deck, with the pairs that lost.
 

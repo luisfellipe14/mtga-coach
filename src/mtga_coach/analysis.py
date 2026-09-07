@@ -238,6 +238,11 @@ def colour_requirements(entries, deck_size=60, target=0.90):
         card = entry.get("card") or {}
         if not card.get("resolved") or card.get("is_land") or card.get("mana_value") is None:
             continue
+        # A spell with X in its cost is not cast on the turn its printed cost suggests:
+        # {X}{U} has a mana value of one and is never a one-drop. Letting it set the
+        # earliest turn for its colour invents a demand the deck does not have.
+        if "X" in (card.get("mana_tokens") or []):
+            continue
         turn = max(1, int(card["mana_value"]))
         for colour, pips in hard_pips(card).items():
             key = (colour, pips)

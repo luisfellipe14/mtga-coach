@@ -23,8 +23,13 @@ from . import analysis
 
 # Minimum deck sizes, from the game's rules. A limited deck is 40 and nobody plays 41.
 DECK_MINIMUMS = {"limited": 40, "constructed": 60, "commander": 100}
-# The land count every limited primer converges on, and the ratio behind it.
+# Seventeen is where every limited primer starts, and it is right for a deck whose average
+# spell costs about three. A deck of one- and two-drops with card selection floods on that
+# seventeenth land; a deck with five- and six-drops misses its fourth. The two offsets are
+# the ones the same primers agree on, and the answer says which rule it applied and why.
 LIMITED_LANDS = 17
+LOW_CURVE, HIGH_CURVE = 2.7, 3.3
+LOW_CURVE_LANDS, HIGH_CURVE_LANDS = 16, 18
 SPELLS = DECK_MINIMUMS["limited"] - LIMITED_LANDS
 # A pool rarely offers more than a handful of expensive cards worth playing.
 MAX_EXPENSIVE = 5
@@ -205,13 +210,37 @@ def _pick_spells(entries, pair, wanted=SPELLS):
     return chosen, overflow
 
 
+def land_count(chosen, size=DECK_MINIMUMS["limited"]):
+    """How many lands this particular twenty-three wants, and the reason for the number."""
+    spells = [entry for entry in chosen if not entry["is_land"]
+              and isinstance(entry["mana_value"], int)]
+    if not spells:
+        return LIMITED_LANDS, "no curve to read; the standard seventeen"
+    average = sum(entry["mana_value"] for entry in spells) / len(spells)
+    base = round(size * (LIMITED_LANDS / DECK_MINIMUMS["limited"]))
+    if average <= LOW_CURVE:
+        return base - 1, (f"average spell costs {average:.1f}, which is low, so one land comes "
+                          "out — a deck this cheap floods on the seventeenth")
+    if average >= HIGH_CURVE:
+        return base + 1, (f"average spell costs {average:.1f}, which is high, so one land goes "
+                          "in — a deck this expensive misses its fourth land otherwise")
+    return base, f"average spell costs {average:.1f}, which is where seventeen is the right number"
+
+
 def _land_split(chosen, pair, pool_lands, total=LIMITED_LANDS):
     """Basics in proportion to the pips the chosen spells actually demand."""
+    # Pips alone starve the secondary colour: one card costing {3}{R}{R} argues for red as
+    # loudly as two blue cards do for blue, and the deck still has to cast both of those.
+    # Counting the card as well as its pips keeps a colour's share close to how often it is
+    # actually needed, which is what the source check downstream is measuring.
     demand = {colour: 0 for colour in pair}
     for entry in chosen:
-        for colour, pips in analysis.hard_pips(entry["card"]).items():
+        pips = analysis.hard_pips(entry["card"])
+        for colour, count in pips.items():
             if colour in demand:
-                demand[colour] += pips
+                demand[colour] += count
+        for colour in {colour for colour in pips if colour in demand}:
+            demand[colour] += 1
     duals = [land for land in pool_lands
              if set(land["card"].get("color_identity") or []) & set(pair)]
     nonbasic = sum(land["quantity"] for land in duals)
@@ -258,6 +287,11 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
     # A complete deck beats an incomplete one whatever the totals say.
     scored.sort(key=lambda item: (item["short"], -item["total"]))
     best = scored[0]
+    lands, land_reason = land_count(best["chosen"], size)
+    # The spells were chosen against the default count; a changed count changes how many.
+    if size - lands != spells_wanted:
+        spells_wanted = size - lands
+        best["chosen"], _ = _pick_spells(entries, best["pair"], spells_wanted)
     split = _land_split(best["chosen"], best["pair"], pool_lands, lands)
     deck_entries = _deck_entries(best["chosen"], split, cards)
     basis = ("17lands" if coverage["measured"] else
@@ -267,6 +301,7 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
         "spells": [
             {key: item[key] for key in ("card_id", "name", "mana_value", "score", "basis", "why")}
             for item in best["chosen"]],
+        "land_reason": land_reason,
         "land_base": {"basics": split["basics"],
                       "nonbasic": [{"card_id": land["card_id"], "name": land["name"],
                                     "quantity": land["quantity"]} for land in split["nonbasic"]]},

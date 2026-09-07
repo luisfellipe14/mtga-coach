@@ -13,6 +13,7 @@ players either side are cutting — is left as a note rather than folded into a 
 because inventing a coefficient for it would hide a guess inside a total.
 """
 
+from . import build
 from .analysis import hard_pips
 
 # A card entirely outside a committed pool's colours gives up this much win rate. The
@@ -20,6 +21,12 @@ from .analysis import hard_pips
 # off-colour bomb loses to an on-colour playable, and small enough that pick three still
 # takes the best card in the pack.
 OFF_COLOUR_PENALTY = 6.0
+# The penalty has to be in the units of whatever scale is ranking the pack, or it either
+# decides every pick or none of them. The measured scale is win-rate points; the other two
+# are the 0-10 rank used by the deck builder, where the same weight is about half as large.
+PENALTY_BY_BASIS = {"17lands": OFF_COLOUR_PENALTY, "community": 3.0, "structure": 3.0}
+# What share of the pack a source has to cover before it is the one ranking the pack.
+COVERAGE = 0.6
 # By this many picks a pool has told you what it is. Before it, the penalty scales in.
 COMMITMENT_PICKS = 12
 # Two cards inside this margin are a judgement call, not a ranking.
@@ -32,6 +39,14 @@ WHEEL_DISTANCE = 8
 CAVEAT = ("The win rate is other players' games with that card, not your deck with it. "
           "The colour adjustment is this app's, and it is the only thing added to the "
           "public number.")
+BASIS_CAVEAT = {
+    "community": ("No published win rate covers this set yet, so the order comes from grades "
+                  "written by hand and signed. They are opinions, and the measurement replaces "
+                  "them the moment 17Lands has one."),
+    "structure": ("No published win rate and no grade covers this set yet, so the order is read "
+                  "off the cards themselves: removal, bodies, card draw, curve. It can tell a "
+                  "removal spell from a lifegain spell. It cannot tell a bomb from a trap."),
+}
 
 
 def _colours_of(card):
@@ -74,12 +89,22 @@ def _fit(card, chosen):
     return inside / len(colours)
 
 
-def _why(card, row, fit, chosen, commitment, pick_number):
+def _why(card, row, fit, chosen, commitment, pick_number, basis="17lands"):
     reasons = []
-    if row.get("gih_wr") is not None:
+    if basis == "17lands" and row.get("gih_wr") is not None:
         games = row.get("gih_games")
         reasons.append(f"{row['gih_wr'] * 100:.1f}% win rate in games where it was drawn"
                        + (f", over {games:,} of them" if isinstance(games, int) else ""))
+    elif basis != "17lands":
+        if card.get("is_land"):
+            produces = "".join(card.get("color_identity") or []) or "nothing"
+            reasons.append(f"land producing {produces}"
+                           + (" — fixes the colours your pool is paying for"
+                              if set(card.get("color_identity") or []) & set(chosen) else ""))
+        else:
+            _, structural = build.structural_score(card)
+            if structural:
+                reasons.append(", ".join(structural[:3]))
     colours = _colours_of(card)
     if not colours:
         reasons.append("colourless — it goes in any deck you end up with")
@@ -100,31 +125,84 @@ def _why(card, row, fit, chosen, commitment, pick_number):
     return reasons
 
 
-def advise(pack_ids, pool_ids, ratings, cards, pick_number=None):
-    """Rank a pack. `ratings` is keyed by Arena id; `cards` is the local catalogue."""
+def _basis_for(pack, ratings, grades, cards):
+    """Which source ranks this pack, decided once for the whole pack.
+
+    A pack where two cards were measured and twelve were guessed at is a pack that reads
+    as measured and is not. So the sources do not mix: the best-covered one wins outright,
+    in the order measurement, signed opinion, the card's own text.
+    """
+    if not pack:
+        return "structure"
+    measured = sum(1 for cid in pack
+                   if (ratings or {}).get(cid) and (ratings or {})[cid].get("gih_wr") is not None)
+    if measured / len(pack) >= COVERAGE:
+        return "17lands"
+    graded = sum(1 for cid in pack if (grades or {}).get(cid, {}).get("grade") is not None)
+    if graded / len(pack) >= COVERAGE:
+        return "community"
+    return "structure"
+
+
+# A dual land is not a spell and the text reader scores it zero, which would rank the one
+# card that fixes a two-colour deck below every filler in the pack. In the colours the pool
+# is paying for it plays like a solid playable; outside them it is close to nothing.
+LAND_IN_LANE = 4.5
+LAND_OFF_LANE = 1.0
+
+
+def _score_for(basis, card, ratings_row, grade_row, lane_colours=()):
+    """The card's score on the scale the pack is being ranked with, or None."""
+    if basis == "17lands":
+        return None if not ratings_row or ratings_row.get("gih_wr") is None else ratings_row["gih_wr"] * 100
+    if basis == "community":
+        return None if not grade_row or grade_row.get("grade") is None else float(grade_row["grade"]) * 2
+    if not card.get("resolved"):
+        return None
+    if card.get("is_land"):
+        # A basic land is never a pick: the deck gets as many as it wants for free.
+        if card.get("rarity") == "basic":
+            return 0.0
+        produces = set(card.get("color_identity") or [])
+        if not produces:
+            return LAND_OFF_LANE
+        return LAND_IN_LANE if produces & set(lane_colours) else LAND_OFF_LANE
+    score, _ = build.structural_score(card)
+    return score
+
+
+def advise(pack_ids, pool_ids, ratings, cards, pick_number=None, grades=None):
+    """Rank a pack. `ratings` is keyed by Arena id; `cards` is the local catalogue.
+
+    A set that has just released has no published win rate, and staying silent about the
+    pack for a fortnight is worse than ranking it off the cards themselves and saying so.
+    """
     pool_cards = [cards.get(cid) for cid in pool_ids]
     chosen, weights = lane(pool_cards)
     commitment = min(1.0, len(pool_ids) / COMMITMENT_PICKS)
+    pack = list(dict.fromkeys(int(value) for value in pack_ids))
+    basis = _basis_for(pack, ratings, grades, cards)
+    penalty = PENALTY_BY_BASIS[basis]
     rated, unrated = [], []
     # A pack holds one of each card; reading the same id twice would put a card against
     # itself and report the tie as a close call.
-    for cid in dict.fromkeys(int(value) for value in pack_ids):
+    for cid in pack:
         card = cards.get(cid) or {}
         row = (ratings or {}).get(int(cid))
-        if not row or row.get("gih_wr") is None:
+        base = _score_for(basis, card, row, (grades or {}).get(int(cid)), chosen)
+        if base is None:
             unrated.append({"card_id": int(cid), "name": card.get("name") or f"Card #{cid}"})
             continue
         fit = _fit(card, chosen)
-        base = row["gih_wr"] * 100
-        adjustment = -OFF_COLOUR_PENALTY * commitment * (1 - fit)
+        adjustment = -penalty * commitment * (1 - fit)
         rated.append({
             "card_id": int(cid), "name": card.get("name") or row.get("name") or f"Card #{cid}",
             "rarity": card.get("rarity", ""), "mana_value": card.get("mana_value"),
-            "colours": _colours_of(card), "gih_wr": row.get("gih_wr"),
-            "gih_games": row.get("gih_games"), "alsa": row.get("alsa"),
+            "colours": _colours_of(card), "gih_wr": (row or {}).get("gih_wr"),
+            "gih_games": (row or {}).get("gih_games"), "alsa": (row or {}).get("alsa"),
             "base": round(base, 2), "colour_adjustment": round(adjustment, 2),
             "score": round(base + adjustment, 2), "fit": fit,
-            "why": _why(card, row, fit, chosen, commitment, pick_number),
+            "why": _why(card, row or {}, fit, chosen, commitment, pick_number, basis),
         })
     rated.sort(key=lambda item: (-item["score"], item["name"]))
     best = rated[0] if rated else None
@@ -137,7 +215,7 @@ def advise(pack_ids, pool_ids, ratings, cards, pick_number=None):
         "close_calls": close, "ranked": rated, "unrated": unrated,
         "lane": chosen, "colour_weights": {k: round(v, 1) for k, v in weights.items()},
         "commitment": round(commitment, 2), "notes": _notes(pool_cards, unrated, commitment, chosen),
-        "caveat": CAVEAT,
+        "basis": basis, "caveat": CAVEAT if basis == "17lands" else BASIS_CAVEAT[basis],
     }
 
 

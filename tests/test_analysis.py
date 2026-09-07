@@ -111,3 +111,37 @@ class WildcardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManaEdgeCasesTest(unittest.TestCase):
+    """Two ways the source check invents a requirement the deck does not have."""
+
+    @staticmethod
+    def spell(name, tokens, mana_value, quantity=1):
+        return {"card": {"id": abs(hash(name)) % 10000, "name": name, "resolved": True,
+                         "is_land": False, "mana_tokens": list(tokens),
+                         "mana_value": mana_value, "colors": [t for t in tokens if t in "WUBRG"],
+                         "color_identity": [t for t in tokens if t in "WUBRG"]},
+                "quantity": quantity}
+
+    @staticmethod
+    def basic(colour, quantity):
+        return {"card": {"id": 0, "name": "Basic", "resolved": True, "is_land": True,
+                         "mana_tokens": [], "mana_value": 0, "colors": [colour],
+                         "color_identity": [colour]}, "quantity": quantity}
+
+    def test_an_x_spell_does_not_make_a_one_drop_demand(self):
+        # {X}{U} has a mana value of one and is never cast on turn one.
+        deck = [self.spell("Procrastinate", ["X", "U"], 1),
+                self.spell("Counter", ["1", "U"], 2), self.basic("U", 8)]
+        turns = {(item["colour"], item["turn"]) for item in analysis.colour_requirements(deck, 40)}
+        self.assertNotIn(("U", 1), turns)
+        self.assertIn(("U", 2), turns)
+
+    def test_the_published_table_is_not_applied_to_a_forty_card_deck(self):
+        deck = [self.spell("Bolt", ["R"], 1), self.basic("R", 9)]
+        limited = analysis.colour_requirements(deck, 40)[0]
+        constructed = analysis.colour_requirements(deck, 60)[0]
+        self.assertEqual(limited["basis"], "hypergeometric")
+        self.assertEqual(constructed["basis"], "karsten-2022")
+        self.assertLess(limited["needed"], constructed["needed"])
