@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, build, coach, economy, pick, signals, timeline
+from . import analysis, build, coach, economy, pick, primer, signals, timeline
 from .community import CommunityGrades
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
@@ -1025,6 +1025,32 @@ class CoachService:
                      "of what was in each pack and what left it — no second opinion, because the "
                      "app does not have one worth reading here."),
         }
+
+    def set_primer(self, expansion: str = "") -> dict:
+        """What each colour pair is built around in a set, read off the local card database.
+
+        The richest open card data a player has is the file the client already installed.
+        It is complete on release day, needs no network, and — unlike a win rate — it is
+        the same for everybody. It answers the question a new drafter actually has, which
+        is not which card is better but what blue-red is supposed to be doing here.
+        """
+        from .catalog import cards_in_set
+
+        expansion = str(expansion or "").strip().upper()
+        if not expansion:
+            state = (self.watcher.draft_state() if self.watcher is not None else None) or self.store.latest_draft() or {}
+            pool = [int(cid) for cid in state.get("pool") or []]
+            expansion = self._draft_set([], pool, {int(k): v for k, v in self.cards(pool).items()})
+        if not expansion:
+            raise KeyError("no set to read")
+        ids = cards_in_set(expansion, self.card_database_path)
+        if not ids:
+            return {"expansion": expansion, "pairs": [], "reason": (
+                f"The installed card database holds no cards for {expansion}.")}
+        return {"expansion": expansion, **primer.build(self.cards_by_id(ids))}
+
+    def cards_by_id(self, ids: list[int]) -> dict:
+        return {int(key): value for key, value in self.cards(list(ids)).items()}
 
     def draft_signals(self) -> dict:
         """What the packs were passing, counted from the packs that reached him.

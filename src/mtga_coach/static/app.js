@@ -57,7 +57,7 @@ const state = {
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
-  signals: null,
+  signals: null, primer: null,
   live: null, liveTimer: null, liveStamp: '', liveAll: false, grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
@@ -1506,6 +1506,7 @@ function renderDraft() {
     target.append(packGrid(draft.advice, draft.pack_cards ?? []));
   }
   target.append(poolBlock(draft));
+  target.append(primerBlock());
   target.append(signalsBlock());
   target.append(deckBlock());
   target.append(reviewBlock());
@@ -1754,6 +1755,60 @@ function renderDeck(stage, deck) {
   stage.append(copy);
   stage.append(element('small', null,
     'This decides the mechanical part only — the pair, the best cards in it, and lands for the pips they ask for. The archetype and the card that is only good against one opponent are yours.'));
+}
+
+// The card database the client already installed is the richest open data a player has:
+// complete on release day, offline, identical for everybody, and it answers the question a
+// new drafter actually has — not which card is better, but what this pair is even doing.
+function primerBlock() {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'What each pair is for in this set'));
+  const action = element('button', 'button secondary', state.primer ? 'Read it again' : 'Read the set');
+  action.type = 'button';
+  action.addEventListener('click', () => loadPrimer(box));
+  box.append(action);
+  const stage = element('div', 'primer-stage');
+  box.append(stage);
+  if (state.primer) renderPrimer(stage, state.primer);
+  return box;
+}
+
+async function loadPrimer(box) {
+  const stage = box.querySelector('.primer-stage');
+  stage.replaceChildren(element('p', 'subtle', 'Reading the card database…'));
+  try {
+    state.primer = await request('/api/primer');
+    renderPrimer(stage, state.primer);
+  } catch (error) { stage.replaceChildren(element('p', 'gap', error.message)); }
+}
+
+function renderPrimer(stage, data) {
+  stage.replaceChildren();
+  if (!data.pairs?.length) {
+    stage.append(element('p', 'subtle', data.reason ?? 'Nothing to read.'));
+    return;
+  }
+  stage.append(element('p', 'subtle',
+    `${data.expansion} · ${data.cards_read} cards read from the database Arena installed here`
+    + (data.set_mechanics?.length
+      ? ` · mechanics: ${data.set_mechanics.map((item) => `${item.name} (${item.cards})`).join(', ')}`
+      : '')));
+  const lane = new Set(state.draft?.advice?.lane ?? []);
+  data.pairs.forEach((pair) => {
+    const yours = pair.pair.split('').every((colour) => lane.has(colour));
+    const box = element('article', `primer-pair${yours ? ' yours' : ''}`);
+    const head = element('div', 'primer-head');
+    head.append(colourPips(pair.pair.split('')));
+    if (yours) head.append(element('span', 'primer-mine', 'your pair'));
+    box.append(head);
+    box.append(element('p', null, pair.reading));
+    if (pair.leanings?.length) {
+      box.append(element('small', null, 'Also returns to: ' + pair.leanings
+        .map((item) => `${item.about} (${item.cards} cards, ${item.lift}× the set)`).join(' · ')));
+    }
+    stage.append(box);
+  });
+  stage.append(element('small', null, data.note));
 }
 
 // The one piece of draft advice that needs no outside data: counting the packs that

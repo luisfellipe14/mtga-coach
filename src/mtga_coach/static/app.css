@@ -403,3 +403,11 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .signal-zero { background: rgba(255,255,255,.28); bottom: -2px; left: 50%; position: absolute; top: -2px; width: 1px; }
 .signal-delta { color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; text-align: right; }
 .signal-delta.up { color: var(--gold); }
+
+.primer-stage { margin-top: .7rem; }
+.primer-pair { border-left: 2px solid rgba(255,255,255,.09); margin: .5rem 0; padding: .1rem .7rem; }
+.primer-pair.yours { border-left-color: var(--gold); }
+.primer-head { align-items: center; display: flex; gap: .5rem; }
+.primer-mine { color: var(--gold); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
+.primer-pair p { font-size: .86rem; line-height: 1.5; margin: .2rem 0; max-width: 46rem; }
+.primer-pair small { color: var(--muted); display: block; margin-bottom: .3rem; }

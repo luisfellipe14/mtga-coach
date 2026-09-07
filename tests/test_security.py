@@ -12,7 +12,10 @@ from mtga_coach.service import CoachService
 class LocalBoundaryTests(unittest.TestCase):
     def test_rejects_network_bind_and_untrusted_http_requests(self):
         with tempfile.TemporaryDirectory() as directory:
-            service = CoachService(data_dir=Path(directory))
+            # An explicit log path so no assertion here can ever reach the real
+            # Player.log, whatever a future change makes reachable from the API.
+            service = CoachService(data_dir=Path(directory),
+                                   log_path=Path(directory) / 'absent.log')
             with self.assertRaises(ValueError):
                 create_server(service, host='0.0.0.0', port=0)
             server = create_server(service, port=0)
@@ -24,7 +27,10 @@ class LocalBoundaryTests(unittest.TestCase):
                 headers = {'Host': f'127.0.0.1:{port}', 'Content-Type': 'application/json',
                            'X-MTGA-Coach': '1', **(extra or {})}
                 body = json.dumps(payload).encode() if payload is not None else None
-                client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
+                # Generous, because this test is about what the server refuses and not
+                # about how fast it answers: three seconds flaked when the machine was
+                # busy following an eighty-megabyte log.
+                client = http.client.HTTPConnection('127.0.0.1', port, timeout=15)
                 try:
                     client.request(method, path, body=body, headers=headers)
                     response = client.getresponse()

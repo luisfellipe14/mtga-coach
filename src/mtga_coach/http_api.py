@@ -107,6 +107,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, {"rulings": service.rulings_for([int(v) for v in values if v])})
         elif path == "/api/draft":
             self._send(HTTPStatus.OK, service.draft())
+        elif path == "/api/primer":
+            self._send(HTTPStatus.OK, service.set_primer(query.get("set", [""])[0]))
         elif path == "/api/draft/signals":
             self._send(HTTPStatus.OK, service.draft_signals())
         elif path == "/api/draft/review":

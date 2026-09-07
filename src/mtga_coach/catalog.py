@@ -131,6 +131,26 @@ def _open(card_database_path=None):
     return con
 
 
+def cards_in_set(expansion, card_database_path=None):
+    """Every non-token card the installed client knows for one set.
+
+    The richest open card data a player has is the database the game already put on their
+    disk. It needs no network, it is complete on release day, and it is the same file the
+    client itself reads.
+    """
+    con = _open(card_database_path)
+    if con is None:
+        return []
+    try:
+        rows = con.execute("SELECT GrpId FROM Cards WHERE UPPER(ExpansionCode)=? AND IsToken=0",
+                           (str(expansion).upper(),)).fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    return sorted(int(row[0]) for row in rows)
+
+
 def lookup_by_print(set_code, collector_number, card_database_path=None):
     """Arena id of one exact printing, or None when the local database has no such card."""
     con = _open(card_database_path)
