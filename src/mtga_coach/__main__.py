@@ -30,6 +30,22 @@ def smoke():
             service.store.close()
 
 
+def already_running(host, port, timeout=1.5):
+    """True when another copy of this app already answers on that port.
+
+    Windows lets a second process bind the same port while the first keeps accepting, so
+    the newer instance would run as a ghost: it looks started, and every request reaches
+    the older build. Better to say so and stop.
+    """
+    try:
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/api/health",
+                                         headers={"Host": f"127.0.0.1:{port}"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.load(response).get("app") == "mtga-coach"
+    except Exception:
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="MTGA Coach — local match review")
     parser.add_argument("--host", default="127.0.0.1")
@@ -45,6 +61,12 @@ def main():
     args = parser.parse_args()
     if args.smoke:
         smoke()
+        return
+    if already_running(args.host, args.port):
+        address = f"http://127.0.0.1:{args.port}/"
+        print(f"MTGA Coach is already running at {address}", flush=True)
+        if args.open_browser:
+            webbrowser.open(address)
         return
     service = CoachService(data_dir=args.data_dir)
     if args.import_current:

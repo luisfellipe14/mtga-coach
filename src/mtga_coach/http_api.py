@@ -102,6 +102,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, {"experiments": service.experiments()})
         elif path == "/api/notes":
             self._send(HTTPStatus.OK, {"notes": service.notes()})
+        elif path == "/api/rulings":
+            values = query.get("ids", [""])[0].split(",")
+            self._send(HTTPStatus.OK, {"rulings": service.rulings_for([int(v) for v in values if v])})
         elif path == "/api/capture":
             self._send(HTTPStatus.OK, service.capture_status())
         elif path == "/api/cards":
@@ -217,6 +220,14 @@ class _Handler(BaseHTTPRequestHandler):
                 if not isinstance(ids, list):
                     raise ValueError("invalid card_ids")
                 self._send(HTTPStatus.OK, self.coach_service.fetch_art(ids))
+            elif parsed.path == "/api/rulings":
+                self._send(HTTPStatus.OK, self.coach_service.set_rulings(
+                    bool(self._json(body).get("enabled"))))
+            elif parsed.path == "/api/rulings/fetch":
+                ids = self._json(body).get("card_ids")
+                if not isinstance(ids, list):
+                    raise ValueError("invalid card_ids")
+                self._send(HTTPStatus.OK, self.coach_service.fetch_rulings(ids))
             elif parsed.path == "/api/decks/analyze":
                 self._send(HTTPStatus.OK, self.coach_service.analyze_list(
                     self._json(body).get("text", "")))

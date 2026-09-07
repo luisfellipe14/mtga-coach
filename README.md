@@ -99,6 +99,12 @@ Both start switched off, and both are per-feature toggles in **Settings**.
 - **Card art (Scryfall).** Sends a set code and a collector number, nothing else. Each image
   is downloaded once and served from disk afterwards. Card names and rules text keep coming
   from the Arena database installed on your PC.
+- **Card rulings (Scryfall).** The official rulings for a card — "you lose 2 life even if the
+  target has no nonland cards", "it still enters tapped". Fetched once per card, kept on disk,
+  shown in the card inspector, and attached to an AI reading for the cards in that position
+  only. The Comprehensive Rules are deliberately *not* bundled: at roughly 225,000 tokens they
+  would cost more per question than everything else in the request combined, and they do not
+  answer "what does this card do here" — the rulings do.
 - **AI reading (Anthropic).** Sends the sanitised position — only what you knew at that
   instant — plus the numbers the app computed. The model is instructed not to recompute them,
   not to invent card text, and never to call a play correct. Your key is encrypted locally and

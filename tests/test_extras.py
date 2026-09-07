@@ -258,3 +258,56 @@ class RelabelTests(unittest.TestCase):
 
         action = {"type": "SomethingNew", "label": "whatever"}
         self.assertEqual(relabel_action(action)["label"], "whatever")
+
+
+class RulingsCacheTests(unittest.TestCase):
+    """Rulings are retrieved by card identity: precise, and only for cards in the position."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def test_a_card_is_asked_about_once_and_an_empty_answer_is_remembered(self):
+        from mtga_coach.rulings import RulingsCache
+
+        class Fetcher:
+            calls = 0
+
+            def resolve(self, cards):
+                Fetcher.calls += 1
+                return {100: [{"published_at": "2020-08-07", "comment": "You lose 2 life anyway."}],
+                        101: []}, []
+
+        cache = RulingsCache(self.root, Fetcher())
+        cards = [{"id": 100, "resolved": True}, {"id": 101, "resolved": True}]
+
+        first = cache.fetch(cards)
+        self.assertEqual((first["stored"], first["with_rulings"]), (2, 1))
+        # A card with no rulings is a real answer, not a card we failed to check.
+        self.assertEqual(cache.get(101), [])
+        self.assertEqual(cache.for_cards([100, 101]), {100: [{"date": "2020-08-07", "text": "You lose 2 life anyway."}]})
+
+        self.assertEqual(cache.fetch(cards)["requested"], 0)
+        self.assertEqual(Fetcher.calls, 1)
+
+    def test_a_card_never_asked_about_is_distinguished_from_one_with_no_rulings(self):
+        from mtga_coach.rulings import RulingsCache
+
+        cache = RulingsCache(self.root, None.__class__)
+        self.assertIsNone(cache.get(999))
+        self.assertFalse(cache.has(999))
+
+    def test_the_stored_text_is_trimmed_to_what_a_prompt_can_carry(self):
+        from mtga_coach.rulings import MAX_PER_CARD, RulingsCache
+
+        class Many:
+            def resolve(self, cards):
+                return {100: [{"published_at": "2020-01-01", "comment": f"ruling {n}"}
+                              for n in range(MAX_PER_CARD + 5)]}, []
+
+        cache = RulingsCache(self.root, Many())
+        cache.fetch([{"id": 100, "resolved": True}])
+        self.assertEqual(len(cache.get(100)), MAX_PER_CARD)

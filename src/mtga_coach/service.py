@@ -11,6 +11,7 @@ from . import analysis, coach, timeline
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
+from .rulings import CREDIT as RULINGS_CREDIT, RulingsCache
 from .secrets import KeyStore
 from .storage import ReviewStore
 
@@ -55,6 +56,7 @@ class CoachService:
         self.store = ReviewStore(self.data_dir)
         self.watcher = None
         self.art = ArtCache(self.data_dir)
+        self.rulings = RulingsCache(self.data_dir)
         self.keys = KeyStore(self.data_dir)
         # The catalogue is a read-only file that never changes while the app runs, so a
         # resolved card can be kept; the summary asks for the same ids on every call.
@@ -146,6 +148,7 @@ class CoachService:
             "named_decks": self.store.named_decks(), "database_bytes": self.store.database_bytes(),
             "capture": self.capture_status(), "art": self.art_status(),
             "coach": self.coach_status(), "art_credit": ART_CREDIT,
+            "rulings": self.rulings_status(), "rulings_credit": RULINGS_CREDIT,
             "warnings": sorted({*self.store.import_warnings(),
                                 *(warning for game in games for warning in game.get("warnings", [])
                                   if isinstance(warning, str))}),
@@ -579,6 +582,24 @@ class CoachService:
         return [item["id"] for section in ("main", "sideboard")
                 for item in deck.get(section, []) if isinstance(item, dict)]
 
+    def rulings_status(self) -> dict:
+        return {**self.rulings.stats(), "enabled": bool(self.store.profile("rulings_enabled"))}
+
+    def set_rulings(self, enabled: bool) -> dict:
+        self.store.set_profile("rulings_enabled", bool(enabled))
+        return self.rulings_status()
+
+    def fetch_rulings(self, card_ids: list[int]) -> dict:
+        """Ask about the cards in front of the player, and never about the whole catalogue."""
+        if not self.store.profile("rulings_enabled"):
+            raise ValueError("card rulings are switched off")
+        cards = self.cards(sorted({int(value) for value in card_ids if int(value) > 0}))
+        return {**self.rulings.fetch(list(cards.values())), **self.rulings_status()}
+
+    def rulings_for(self, card_ids: list[int]) -> dict:
+        return {str(card_id): items
+                for card_id, items in self.rulings.for_cards(sorted(set(card_ids))).items()}
+
     # ------------------------------------------------------------------ deck lists
 
     def export_deck(self, deck_id: str) -> dict:
@@ -669,12 +690,18 @@ class CoachService:
         context = self.decision_context(str(game_id), int(index))
         if not context["eligible"]:
             raise ValueError(context["text"])
-        material = {"posicao": context["context"]}
+        material = {"position": context["context"]}
         try:
-            material["grimorio"] = self.library_state(str(game_id), int(index))
+            material["library"] = self.library_state(str(game_id), int(index))
         except (KeyError, ValueError):
-            material["grimorio"] = {"eligible": False}
-        material["adversario"] = self.opponent_profile(str(game_id))
+            material["library"] = {"eligible": False}
+        material["opponent"] = self.opponent_profile(str(game_id))
+        known = self.rulings_for([int(card_id) for card_id in context["context"].get("cards", {})])
+        if known:
+            # Rulings are about the cards actually on the table, so they cost a few hundred
+            # tokens instead of the whole rulebook, and they answer the question the model
+            # most often gets wrong: what this particular card does here.
+            material["card_rulings"] = known
         return material
 
     def coach_review(self, mode: str, kind: str, **kwargs) -> dict:

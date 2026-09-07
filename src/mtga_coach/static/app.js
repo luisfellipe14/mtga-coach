@@ -709,6 +709,22 @@ function inspectCard(id) {
   const hasPower = card.power !== null && card.power !== undefined && String(card.power).trim() !== '';
   const hasToughness = card.toughness !== null && card.toughness !== undefined && String(card.toughness).trim() !== '';
   if (hasPower || hasToughness) target.append(element('p', null, `${hasPower ? card.power : '?'}/${hasToughness ? card.toughness : '?'}`));
+  showRulings(target, id);
+}
+
+async function showRulings(target, id) {
+  if (!state.summary?.rulings?.enabled) return;
+  try {
+    const first = (await request(`/api/rulings?ids=${encodeURIComponent(id)}`)).rulings?.[id];
+    if (first === undefined) await postJson('/api/rulings/fetch', { card_ids: [id] });
+    const answer = (await request(`/api/rulings?ids=${encodeURIComponent(id)}`)).rulings?.[id] ?? [];
+    if (!answer.length) return;
+    const box = element('div', 'rulings');
+    box.append(element('h4', null, 'Rulings'));
+    answer.forEach((item) => box.append(element('p', null, item.text)));
+    box.append(element('small', null, state.summary?.rulings_credit || ''));
+    target.append(box);
+  } catch { /* Rulings are an extra; a failure must not disturb the review. */ }
 }
 
 function changeFrame(position) { state.framePosition = position; renderReplay(); }
@@ -1150,6 +1166,21 @@ function renderSettings() {
   art.append(element('p', null, `${summary.art?.cached ?? 0} image(s) cached · ${bytesText(summary.art?.bytes)} · ${summary.art?.without_image ?? 0} card(s) with no paper printing.`));
   art.append(element('small', null, summary.art_credit || ''));
   target.append(art);
+
+  const rules = element('section', 'deck-section');
+  rules.append(element('h3', null, 'Card rulings'));
+  rules.append(element('p', 'subtle', "Official rulings for the cards in front of you — what this card actually does in this spot. Fetched once per card from Scryfall and kept on this PC. The full Comprehensive Rules are deliberately not bundled: they would cost more per question than everything else combined, and they answer a different question."));
+  const rulesToggle = element('button', `button ${summary.rulings?.enabled ? 'primary' : 'secondary'}`,
+    summary.rulings?.enabled ? 'Rulings on — switch off' : 'Switch rulings on');
+  rulesToggle.type = 'button';
+  rulesToggle.addEventListener('click', async () => {
+    try { await postJson('/api/rulings', { enabled: !summary.rulings?.enabled }); await refresh(); renderSettings(); }
+    catch (error) { setMessage(`Could not change it: ${error.message}`, 'error'); }
+  });
+  rules.append(rulesToggle);
+  rules.append(element('p', null, `${summary.rulings?.cards_checked ?? 0} card(s) checked · ${summary.rulings?.cards_with_rulings ?? 0} have rulings.`));
+  rules.append(element('small', null, summary.rulings_credit || ''));
+  target.append(rules);
 
   const ai = element('section', 'deck-section');
   ai.append(element('h3', null, 'AI reading'));
