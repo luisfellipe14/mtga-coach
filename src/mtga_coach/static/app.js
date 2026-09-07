@@ -107,6 +107,26 @@ function intervalText(interval) {
 }
 function bytesText(value) { return typeof value === 'number' ? `${(value / 1e6).toFixed(1)} MB` : '—'; }
 
+const MANA_ORDER = 'WUBRG';
+
+function deckColours(deckId) {
+  return state.summary?.decks?.find((deck) => deck.id === deckId)?.colours ?? [];
+}
+
+function colourSpine(colours) {
+  const spine = element('div', 'colour-spine');
+  const stops = (colours.length ? colours : ['C']).map((colour) => `var(--mana-${colour.toLowerCase()})`);
+  spine.style.background = stops.length === 1 ? stops[0]
+    : `linear-gradient(to bottom, ${stops.map((stop, at) => `${stop} ${Math.round(at * 100 / stops.length)}% ${Math.round((at + 1) * 100 / stops.length)}%`).join(', ')})`;
+  return spine;
+}
+
+function colourPips(colours) {
+  const box = element('span', 'deck-colours');
+  (colours.length ? colours : ['C']).forEach((colour) => box.append(element('span', `pip pip-${colour}`)));
+  return box;
+}
+
 function appendMetric(container, value, label, detail = '') {
   const card = element('article', 'metric');
   card.append(element('strong', null, value), element('span', null, label));
@@ -179,16 +199,20 @@ function renderCaptureLine(capture) {
 function gameCard(game) {
   const row = element('button', `game-row quality-${game.quality}`, '');
   row.type = 'button';
+  const colours = deckColours(game.deck_id);
   const identity = element('div', 'game-identity');
-  identity.append(element('strong', null, `${game.deck_label || 'Composition'} · game ${game.game_number ?? '—'}`),
-    element('span', null, `${game.format || 'Format unknown'} · ${game.mode || 'Mode unknown'}${game.opponent_name ? ` · vs ${game.opponent_name}` : ''}`));
+  const title = element('strong', null, `${game.deck_label || 'Composition'} · game ${game.game_number ?? '—'}`);
+  title.append(colourPips(colours));
+  identity.append(title, element('span', null,
+    `${game.format || 'Format unknown'} · ${game.mode || 'Mode unknown'}${game.opponent_name ? ` · vs ${game.opponent_name}` : ''}`));
   const meta = element('div', 'game-meta');
-  meta.append(element('span', `result ${game.result}`, resultLabel(game.result)),
-    element('span', null, startLabel(game.on_play)),
-    element('span', 'quality-badge', qualityLabel(game.quality)),
-    element('span', null, `${game.turns ?? 0} turns`),
-    element('span', null, `${game.decision_count ?? 0} decisions`));
-  row.append(identity, meta);
+  meta.append(element('span', `result-badge ${game.result}`, resultLabel(game.result)));
+  if (game.on_play !== null && game.on_play !== undefined) {
+    meta.append(element('span', 'start-glyph', game.on_play ? '▶ on the play' : '◀ on the draw'));
+  }
+  if (game.quality !== 'complete') meta.append(element('span', 'quality-badge', qualityLabel(game.quality)));
+  meta.append(element('span', null, `${game.turns ?? 0} turns`), element('span', null, `${game.decision_count ?? 0} decisions`));
+  row.append(colourSpine(colours), identity, meta);
   row.addEventListener('click', () => openGame(game.id));
   return row;
 }
@@ -806,7 +830,9 @@ function renderDecks() {
     const option = element('option', null, deckEntry.label || deckEntry.id); option.value = deckEntry.id; select.append(option);
     const button = element('button', `deck-version ${index === 0 ? 'active' : ''}`, '');
     button.type = 'button';
-    button.append(element('strong', null, deckEntry.label || `Version ${deckEntry.id}`),
+    const heading = element('strong', null, deckEntry.label || `Version ${deckEntry.id}`);
+    heading.append(colourPips(deckEntry.colours ?? []));
+    button.append(heading,
       element('span', null, `${deckEntry.main_count ?? 0} main · ${scoped.games} ${state.mode === 'both' ? '' : state.mode} games`),
       element('small', null, percent(scoped.win_rate)));
     button.addEventListener('click', () => { list.querySelectorAll('.deck-version').forEach((item) => item.classList.remove('active')); button.classList.add('active'); showDeck(deckEntry.id); });
@@ -868,11 +894,30 @@ function bindDeckControl(report) {
 }
 
 function curveBlock(report) {
-  const curve = element('div', 'mana-curve');
+  const curve = element('section', 'deck-section');
   curve.append(element('h3', null, 'Mana curve · main deck, lands excluded'));
-  curve.append(element('small', null, `${report.lands} lands · average MV ${report.average_mana_value ?? '—'}${report.lands_recommended ? ` · published regression suggests ${report.lands_recommended}` : ''}`));
-  if (!report.curve) curve.append(element('p', 'gap', `No curve: ${report.unresolved.length} main-deck card(s) were not resolved by the local catalogue.`));
-  else Object.entries(report.curve).forEach(([mana, quantity]) => curve.append(element('span', 'curve-bar', `${mana}: ${quantity}`)));
+  if (!report.curve) {
+    curve.append(element('p', 'gap', `No curve: ${report.unresolved.length} main-deck card(s) were not resolved by the local catalogue.`));
+  } else {
+    const entries = Object.entries(report.curve).map(([mana, quantity]) => [Number(mana), quantity]);
+    const peak = Math.max(...entries.map(([, quantity]) => quantity), 1);
+    const chart = element('div', 'curve-chart');
+    entries.sort((a, b) => a[0] - b[0]).forEach(([mana, quantity]) => {
+      const column = element('div', 'curve-col');
+      const area = element('div', 'curve-area');
+      const fill = element('div', 'curve-fill');
+      fill.style.height = `${Math.round((quantity / peak) * 100)}%`;
+      fill.title = `${quantity} card(s) at mana value ${mana}`;
+      area.append(fill);
+      column.append(element('strong', null, String(quantity)), area, element('span', null, String(mana)));
+      chart.append(column);
+    });
+    curve.append(chart);
+  }
+  const lands = report.lands ?? 0;
+  const wanted = report.lands_recommended;
+  curve.append(element('small', null, `${lands} lands · average mana value ${report.average_mana_value ?? '—'}`
+    + (wanted ? ` · the published regression suggests ${wanted}${Math.abs(lands - wanted) >= 1 ? ` (${lands < wanted ? 'you run fewer' : 'you run more'})` : ''}` : '')));
   return curve;
 }
 
@@ -885,10 +930,23 @@ function manaBaseBlock(report) {
     if (report.flexible_costs?.length) box.append(element('small', null, `Flexible costs: ${report.flexible_costs.join(', ')}.`));
     return box;
   }
+  const widest = Math.max(...requirements.map((item) => Math.max(item.have, item.needed)), 1);
   requirements.forEach((item) => {
-    const row = element('div', `deck-card${item.shortfall ? ' shortfall' : ''}`);
-    row.append(element('strong', null, `${item.colour} ×${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources`),
-      element('span', null, item.shortfall ? `${item.shortfall} short — demand set by ${item.driver}` : `met — demand set by ${item.driver}`));
+    const row = element('div', `source-row ${item.shortfall ? 'short' : 'met'}`);
+    const head = element('div', 'source-head');
+    const name = element('strong', null, '');
+    name.append(colourPips([item.colour]), document.createTextNode(` ×${item.pips} by turn ${item.turn}`));
+    head.append(name, element('span', null, item.shortfall
+      ? `${item.have} of ${item.needed} — ${item.shortfall} short · ${item.driver}`
+      : `${item.have} of ${item.needed} — met · ${item.driver}`));
+    const track = element('div', 'source-track');
+    const have = element('div', 'source-have');
+    have.style.width = `${Math.round((item.have / widest) * 100)}%`;
+    const need = element('div', 'source-need');
+    need.style.left = `${Math.round((item.needed / widest) * 100)}%`;
+    need.title = `${item.needed} sources wanted`;
+    track.append(have, need);
+    row.append(head, track);
     box.append(row);
   });
   if (report.flexible_costs?.length) box.append(element('small', null, `Left out because the colour is not mandatory: ${report.flexible_costs.join(', ')} (hybrid or Phyrexian mana).`));
@@ -903,12 +961,16 @@ function wildcardBlock(report) {
   const cost = report.wildcards?.cost ?? {};
   const owned = state.summary?.inventory ?? {};
   const map = { common: ['commons', 'WildCardCommons'], uncommon: ['uncommons', 'WildCardUnCommons'], rare: ['rares', 'WildCardRares'], mythic: ['mythics', 'WildCardMythics'] };
+  const grid = element('div', 'wildcards');
   Object.entries(map).forEach(([key, [label, inventoryKey]]) => {
-    const row = element('div', 'deck-card');
-    row.append(element('strong', null, `${cost[key] ?? 0} ${label}`),
-      element('span', null, owned[inventoryKey] !== undefined ? `you hold ${owned[inventoryKey]}` : 'stock not read'));
-    box.append(row);
+    const need = cost[key] ?? 0;
+    const held = owned[inventoryKey];
+    const card = element('article', `wildcard${typeof held === 'number' && held < need ? ' short' : ''}`);
+    card.append(element('strong', null, String(need)), element('span', null, label));
+    card.append(element('small', null, typeof held === 'number' ? `you hold ${held}` : 'stock not read'));
+    grid.append(card);
   });
+  box.append(grid);
   box.append(element('small', null, 'Cost of the whole list. Arena stopped publishing the collection in the log, so the app cannot know which copies you already own.'));
   return box;
 }
@@ -1004,8 +1066,23 @@ function renderExperiments() {
 // ---------------------------------------------------------------- statistics
 
 function statRow(label, metrics) {
-  const row = element('div', 'deck-card');
-  row.append(element('strong', null, label), element('span', null, intervalText(metrics?.interval)));
+  const interval = metrics?.interval;
+  const row = element('div', 'rate-bar');
+  const head = element('div', 'rate-head');
+  head.append(element('strong', null, label), element('span', null, intervalText(interval)));
+  row.append(head);
+  if (!interval) return row;
+  const track = element('div', 'rate-track');
+  const band = element('div', 'rate-band');
+  band.style.left = `${interval.low * 100}%`;
+  band.style.width = `${Math.max((interval.high - interval.low) * 100, 1)}%`;
+  band.title = `95% interval: ${percent(interval.low)} to ${percent(interval.high)}`;
+  const point = element('div', 'rate-point');
+  point.style.left = `${interval.rate * 100}%`;
+  track.append(element('div', 'rate-half'), band, point);
+  const scale = element('div', 'rate-scale');
+  scale.append(element('span', null, '0%'), element('span', null, '50%'), element('span', null, '100%'));
+  row.append(track, scale);
   return row;
 }
 

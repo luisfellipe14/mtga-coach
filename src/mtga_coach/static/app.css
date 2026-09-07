@@ -7,8 +7,18 @@
   --deep-green: #10291f;
   --jade: #6dd3a8;
   --jade-dim: #3a9d77;
-  --gold: #d3b578;
+  --gold: #d8bd7f;
+  --gold-bright: #efd9a3;
   --red: #d87668;
+  /* The five colours are data, not decoration: they say what a card or a deck is, so
+     nothing else in the interface is allowed to borrow them. Values sit close to the
+     printed mana symbols, lifted for legibility on a dark ground. */
+  --mana-w: #f6f0d4;
+  --mana-u: #4c9fdc;
+  --mana-b: #a189b8;
+  --mana-r: #e2694a;
+  --mana-g: #56b473;
+  --mana-c: #9aa39d;
   --line: rgba(210, 231, 210, .14);
   --shadow: 0 18px 55px rgba(0, 0, 0, .28);
   font-family: Candara, "Segoe UI", sans-serif;
@@ -38,9 +48,9 @@ small { color: var(--muted); }
 .provenance strong { color: var(--jade); font-weight: 600; }
 .top-actions { display: flex; gap: .55rem; }
 .button { align-items: center; background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; display: inline-flex; justify-content: center; min-height: 2.45rem; padding: .5rem .82rem; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
-.button:hover:not(:disabled) { border-color: var(--jade); transform: translateY(-1px); }
-.button.primary { background: var(--jade); border-color: var(--jade); color: #0a1c14; font-weight: 700; }
-.button.primary:hover:not(:disabled) { background: #94e2be; }
+.button:hover:not(:disabled) { border-color: var(--gold); transform: translateY(-1px); }
+.button.primary { background: var(--gold); border-color: var(--gold); color: #1a1408; font-weight: 700; }
+.button.primary:hover:not(:disabled) { background: var(--gold-bright); }
 .button.secondary { background: rgba(255, 255, 255, .03); color: var(--ink); }
 .button:disabled { cursor: not-allowed; opacity: .48; }
 .file-button input { height: 1px; opacity: 0; overflow: hidden; position: absolute; width: 1px; }
@@ -48,8 +58,8 @@ small { color: var(--muted); }
 .navigation { border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .3rem; padding: 1.25rem .85rem; }
 .nav-item { background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--muted); cursor: pointer; font-size: .95rem; padding: .72rem .7rem; text-align: left; transition: color .18s ease, background .18s ease; }
 .nav-item span { color: var(--gold); display: inline-block; margin-right: .6rem; width: 1rem; }
-.nav-item:hover, .nav-item.active { background: rgba(109, 211, 168, .09); color: var(--ink); }
-.nav-item.active { border-color: rgba(109, 211, 168, .2); }
+.nav-item:hover, .nav-item.active { background: rgba(216, 189, 127, .10); color: var(--ink); }
+.nav-item.active { border-color: rgba(216, 189, 127, .28); }
 .nav-foot { border-top: 1px solid var(--line); color: var(--jade); font-size: .83rem; line-height: 1.45; margin-top: auto; padding: 1rem .7rem 0; }
 .status-dot { background: var(--jade); border-radius: 50%; box-shadow: 0 0 12px var(--jade); display: inline-block; height: .45rem; margin-right: .38rem; width: .45rem; }
 .content { margin: 0 auto; max-width: 1540px; padding: clamp(1.5rem, 3.8vw, 4.5rem); width: 100%; }
@@ -61,7 +71,7 @@ small { color: var(--muted); }
 .subtle { color: var(--muted); line-height: 1.45; max-width: 68ch; }
 .mode-filter { background: rgba(0, 0, 0, .16); border: 1px solid var(--line); border-radius: 5px; display: flex; padding: .18rem; }
 .mode { background: transparent; border: 0; border-radius: 3px; color: var(--muted); cursor: pointer; font-size: .82rem; padding: .45rem .65rem; }
-.mode.active { background: var(--deep-green); color: var(--jade); }
+.mode.active { background: var(--deep-green); color: var(--gold); }
 .hero-panel { background: linear-gradient(110deg, rgba(24, 65, 47, .97), rgba(16, 36, 28, .92)); border: 1px solid rgba(109, 211, 168, .26); box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(120px, .8fr) 1.3fr; margin-bottom: 1.1rem; min-height: 142px; overflow: hidden; padding: 1.25rem 1.45rem; position: relative; }
 .hero-panel::after { border: 1px solid rgba(211, 181, 120, .32); content: ''; height: 190px; position: absolute; right: -48px; top: -78px; transform: rotate(45deg); width: 190px; }
 .hero-label { align-self: center; color: var(--gold); font-size: .72rem; font-weight: bold; letter-spacing: .14em; }
@@ -78,7 +88,7 @@ small { color: var(--muted); }
 .count-chip { border: 1px solid var(--line); border-radius: 20px; color: var(--jade); font-size: .78rem; padding: .32rem .6rem; }
 .game-list { display: grid; gap: .4rem; }
 .game-row { align-items: center; background: rgba(255, 255, 255, .018); border: 1px solid transparent; color: var(--ink); cursor: pointer; display: flex; gap: 1rem; justify-content: space-between; padding: .85rem .95rem; text-align: left; transition: background .18s ease, border-color .18s ease; }
-.game-row:hover { background: rgba(109, 211, 168, .07); border-color: rgba(109, 211, 168, .25); }
+.game-row:hover { background: rgba(216, 189, 127, .06); border-color: rgba(216, 189, 127, .3); }
 .game-identity strong, .game-identity span { display: block; }
 .game-identity span { color: var(--muted); font-size: .8rem; margin-top: .22rem; }
 .game-meta { align-items: center; display: flex; flex-wrap: wrap; gap: .65rem; justify-content: flex-end; }
@@ -94,9 +104,9 @@ small { color: var(--muted); }
 .position-heading { align-items: baseline; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.1rem 0 .8rem; padding-bottom: .6rem; }.position-heading strong { font-family: "Palatino Linotype", Georgia, serif; font-size: 1.45rem; }.position-heading span { color: var(--muted); font-size: .76rem; }
 .quality-notice { border-left: 3px solid var(--gold); color: var(--gold); margin-bottom: .8rem; padding: .55rem .7rem; }.quality-notice.blocked { border-color: var(--red); color: #f1a49b; }
 .life-row { display: flex; gap: .65rem; margin-bottom: .8rem; }.life { background: rgba(216, 118, 104, .12); border: 1px solid rgba(216, 118, 104, .25); color: #f0b4ac; font-size: .82rem; padding: .45rem .65rem; }.life.self { background: rgba(109, 211, 168, .10); border-color: rgba(109, 211, 168, .25); color: var(--jade); }
-.board { display: grid; gap: .5rem; }.zone { background: rgba(255, 255, 255, .022); border: 1px solid rgba(255,255,255,.06); min-height: 110px; padding: .65rem; }.zone h4 { margin: 0 0 .5rem; }.card-strip { display: flex; flex-wrap: wrap; gap: .42rem; }.card-tile { background: #1a2821; border: 1px solid rgba(255,255,255,.15); border-left: 4px solid #8f9a93; color: var(--ink); cursor: pointer; display: flex; flex: 1 1 130px; flex-direction: column; justify-content: space-between; min-height: 76px; padding: .45rem .52rem; text-align: left; }.card-tile:hover { filter: brightness(1.15); }.card-tile strong { font-family: "Palatino Linotype", Georgia, serif; font-size: .86rem; }.card-tile small, .mana-line { color: var(--gold); font-size: .72rem; }.mana-w { border-left-color: #e8e5ca; }.mana-u { border-left-color: #65abd6; }.mana-b { border-left-color: #8b6aa0; }.mana-r { border-left-color: #d27565; }.mana-g { border-left-color: #6db37e; }.mana-wu, .mana-ub, .mana-br, .mana-rg, .mana-gw { border-left-color: var(--gold); }.mana-unknown { border-left-color: #8f9a93; }.hidden-count, .empty-zone { color: var(--muted); }
+.board { display: grid; gap: .5rem; }.zone { background: rgba(255, 255, 255, .022); border: 1px solid rgba(255,255,255,.06); min-height: 110px; padding: .65rem; }.zone h4 { margin: 0 0 .5rem; }.card-strip { display: flex; flex-wrap: wrap; gap: .42rem; }.card-tile { background: #1a2821; border: 1px solid rgba(255,255,255,.15); border-left: 4px solid #8f9a93; color: var(--ink); cursor: pointer; display: flex; flex: 1 1 130px; flex-direction: column; justify-content: space-between; min-height: 76px; padding: .45rem .52rem; text-align: left; }.card-tile:hover { filter: brightness(1.15); }.card-tile strong { font-family: "Palatino Linotype", Georgia, serif; font-size: .86rem; }.card-tile small, .mana-line { color: var(--gold); font-size: .72rem; }.mana-w { border-left-color: var(--mana-w); }.mana-u { border-left-color: var(--mana-u); }.mana-b { border-left-color: var(--mana-b); }.mana-r { border-left-color: var(--mana-r); }.mana-g { border-left-color: var(--mana-g); }.mana-unknown { border-left-color: var(--mana-c); }.hidden-count, .empty-zone { color: var(--muted); }
 .decision-sidebar { display: flex; flex-direction: column; gap: .8rem; }.decision-sidebar > h3 { margin: -.45rem 0 0; }.action-list { border-top: 1px solid var(--line); padding-top: .65rem; }.action-list p { color: var(--muted); font-size: .84rem; margin: .25rem 0; }.eligibility { font-size: .8rem; font-weight: 700; margin: 0; padding: .55rem .6rem; }.eligibility.yes { background: rgba(109,211,168,.10); color: var(--jade); }.eligibility.no { background: rgba(216,118,104,.10); color: #efb2aa; }.review-prompts { border-left: 2px solid var(--gold); padding-left: .65rem; }.review-prompts p { color: var(--muted); font-size: .82rem; margin: .38rem 0; }.note-form { display: grid; gap: .42rem; }.note-form label, .experiment-panel label { color: var(--muted); display: grid; font-size: .78rem; gap: .3rem; }.note-form textarea, .experiment-panel input, .experiment-panel textarea, .experiment-panel select { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 3px; color: var(--ink); min-height: 2.25rem; padding: .5rem; resize: vertical; }.note-form textarea { min-height: 78px; }.card-inspector { border-top: 1px solid var(--line); padding-top: .7rem; }.card-inspector p { color: var(--muted); font-size: .82rem; line-height: 1.43; }.card-inspector .rules-text { color: var(--ink); white-space: pre-wrap; }.gap { color: var(--gold) !important; }
-.decks-layout { align-items: start; display: grid; gap: .9rem; grid-template-columns: minmax(190px, .65fr) minmax(300px, 1.25fr) minmax(280px, .9fr); }.deck-list { display: grid; gap: .45rem; }.deck-version { background: rgba(255,255,255,.02); border: 1px solid var(--line); color: var(--ink); cursor: pointer; padding: .8rem; text-align: left; }.deck-version.active, .deck-version:hover { border-color: var(--jade); }.deck-version strong, .deck-version span, .deck-version small { display: block; }.deck-version span { color: var(--muted); font-size: .8rem; margin: .3rem 0; }.deck-version small { color: var(--jade); }.mana-curve { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .9rem; padding-bottom: .8rem; }.mana-curve h3 { flex-basis: 100%; }.curve-bar { background: var(--green); border-bottom: 2px solid var(--jade); color: var(--ink); font-size: .78rem; padding: .35rem .45rem; }.deck-section { margin-top: 1rem; }.deck-card { border-bottom: 1px solid rgba(255,255,255,.07); display: grid; gap: .15rem; padding: .38rem 0; }.deck-card strong { font-size: .9rem; }.deck-card span { color: var(--muted); font-size: .75rem; }.experiment-panel { display: grid; gap: .5rem; }.experiment-panel form { display: grid; gap: .65rem; }.experiment-panel textarea { min-height: 80px; }.experiments { border-top: 1px solid var(--line); display: grid; gap: .6rem; margin-top: .6rem; padding-top: .7rem; }.experiment { background: rgba(109,211,168,.06); padding: .6rem; }.experiment p { color: var(--muted); font-size: .8rem; margin: .32rem 0; }
+.decks-layout { align-items: start; display: grid; gap: .9rem; grid-template-columns: minmax(190px, .65fr) minmax(300px, 1.25fr) minmax(280px, .9fr); }.deck-list { display: grid; gap: .45rem; }.deck-version { background: rgba(255,255,255,.02); border: 1px solid var(--line); color: var(--ink); cursor: pointer; padding: .8rem; text-align: left; }.deck-version.active, .deck-version:hover { border-color: var(--gold); }.deck-version strong, .deck-version span, .deck-version small { display: block; }.deck-version span { color: var(--muted); font-size: .8rem; margin: .3rem 0; }.deck-version small { color: var(--jade); }.mana-curve { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .9rem; padding-bottom: .8rem; }.mana-curve h3 { flex-basis: 100%; }.curve-bar { background: var(--green); border-bottom: 2px solid var(--jade); color: var(--ink); font-size: .78rem; padding: .35rem .45rem; }.deck-section { margin-top: 1rem; }.deck-card { border-bottom: 1px solid rgba(255,255,255,.07); display: grid; gap: .15rem; padding: .38rem 0; }.deck-card strong { font-size: .9rem; }.deck-card span { color: var(--muted); font-size: .75rem; }.experiment-panel { display: grid; gap: .5rem; }.experiment-panel form { display: grid; gap: .65rem; }.experiment-panel textarea { min-height: 80px; }.experiments { border-top: 1px solid var(--line); display: grid; gap: .6rem; margin-top: .6rem; padding-top: .7rem; }.experiment { background: rgba(109,211,168,.06); padding: .6rem; }.experiment p { color: var(--muted); font-size: .8rem; margin: .32rem 0; }
 .zone summary { color: var(--gold); cursor: pointer; font-size: .78rem; font-weight: 700; letter-spacing: .1em; list-style-position: inside; margin-bottom: .5rem; text-transform: uppercase; }
 .decision-navigation { display: flex; gap: .8rem; justify-content: space-between; }
 .decision-navigation .text-button:disabled { color: var(--muted); cursor: not-allowed; text-decoration: none; }
@@ -110,7 +120,7 @@ small { color: var(--muted); }
 /* Sidebar tabs, event strip, library and deck-binding controls. */
 .sidebar-tabs { align-items: stretch; display: flex; flex-wrap: wrap; gap: .25rem; border-bottom: 1px solid var(--line); margin: -.35rem -.35rem .35rem; padding-bottom: .45rem; }
 .sidebar-tab { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--muted); cursor: pointer; display: flex; flex: 1 1 0; font-size: .78rem; justify-content: center; line-height: 1.15; min-height: 2.2rem; min-width: 0; padding: .4rem .25rem; text-align: center; }
-.sidebar-tab.active, .sidebar-tab:hover { background: rgba(109, 211, 168, .09); color: var(--jade); }
+.sidebar-tab.active, .sidebar-tab:hover { background: rgba(216, 189, 127, .12); color: var(--gold-bright); }
 .sidebar-body { display: flex; flex-direction: column; gap: .75rem; }
 .event-strip { display: flex; flex-wrap: wrap; gap: .32rem; margin-bottom: .8rem; }
 .event-strip h4 { flex-basis: 100%; margin: 0 0 .2rem; }
@@ -185,8 +195,8 @@ details.zone-chip[open] { flex-basis: 100%; }
 .turn-strip { align-items: center; display: flex; flex-wrap: wrap; gap: .22rem; margin: .55rem 0 .2rem; }
 .turn-strip-label { color: var(--gold); font-size: .68rem; letter-spacing: .1em; margin-right: .3rem; text-transform: uppercase; }
 .turn-mark { background: transparent; border: 1px solid var(--line); border-radius: 3px; color: var(--muted); cursor: pointer; font-size: .74rem; min-width: 1.7rem; padding: .16rem .3rem; }
-.turn-mark:hover { border-color: var(--jade); color: var(--ink); }
-.turn-mark.active { background: var(--deep-green); border-color: var(--jade); color: var(--jade); }
+.turn-mark:hover { border-color: var(--gold); color: var(--ink); }
+.turn-mark.active { background: var(--deep-green); border-color: var(--gold); color: var(--gold-bright); }
 @media (prefers-reduced-motion: reduce) { .card-tile.entered { animation: none; } }
 
 /* Mana available, combat arithmetic and the step-mode selector. */
@@ -202,3 +212,62 @@ details.zone-chip[open] { flex-basis: 100%; }
 .combat-lethal { color: var(--red); font-weight: 700; }
 .combat-panel small { color: var(--muted); display: block; }
 .step-modes { align-items: center; display: flex; flex-wrap: wrap; gap: .25rem; margin: .1rem 0 .3rem; }
+
+/* A deck's colour identity is a fact about it, so it carries the spine of every row and
+   panel that names that deck. Nothing else in the chrome uses the five colours. */
+.colour-spine { background: var(--mana-c); flex: 0 0 4px; align-self: stretch; }
+.game-row, .deck-version { position: relative; }
+.game-row { align-items: stretch; }
+.game-row .game-identity { flex: 1 1 auto; }
+.result-badge { border-radius: 2px; font-size: .7rem; font-weight: 700; letter-spacing: .08em; padding: .18rem .45rem; text-transform: uppercase; }
+.result-badge.win { background: rgba(109, 211, 168, .16); color: var(--jade); }
+.result-badge.loss { background: rgba(216, 118, 104, .16); color: var(--red); }
+.result-badge.draw, .result-badge.unknown { background: rgba(255, 255, 255, .06); color: var(--muted); }
+.start-glyph { color: var(--gold); font-size: .78rem; }
+/* `.game-identity span` and `.deck-version span` force display:block on every span they
+   contain, and they outrank a single class, so the pips name their container explicitly. */
+.deck-colours, .game-identity .deck-colours, .deck-version .deck-colours, .source-head .deck-colours { display: inline-flex; gap: .15rem; margin-left: .45rem; vertical-align: middle; }
+.pip, .game-identity .pip, .deck-version .pip, .source-head .pip { border-radius: 50%; display: inline-block; flex: 0 0 auto; height: .58rem; width: .58rem; }
+.pip-W { background: var(--mana-w); } .pip-U { background: var(--mana-u); } .pip-B { background: var(--mana-b); }
+.pip-R { background: var(--mana-r); } .pip-G { background: var(--mana-g); } .pip-C { background: var(--mana-c); }
+
+/* The curve is a shape, so it is drawn as one. */
+.curve-chart { display: flex; gap: .35rem; height: 8.5rem; margin: .6rem 0; }
+.curve-col { display: flex; flex: 1 1 0; flex-direction: column; gap: .2rem; height: 100%; text-align: center; }
+/* The bar area is positioned so the fill's percentage height has something definite to
+   resolve against; a percentage inside a plain flex column collapses to nothing. */
+.curve-area { flex: 1 1 auto; position: relative; }
+.curve-fill { background: linear-gradient(to top, var(--jade-dim), var(--jade)); border-radius: 2px 2px 0 0; bottom: 0; left: 0; min-height: 2px; position: absolute; right: 0; }
+.curve-col span { color: var(--muted); font-size: .7rem; }
+.curve-col strong { color: var(--ink); font-size: .78rem; }
+
+/* Sources have and needed, side by side, so a shortfall is a length rather than a sentence. */
+.source-row { display: grid; gap: .15rem; margin-bottom: .5rem; }
+.source-head { align-items: baseline; display: flex; gap: .5rem; justify-content: space-between; }
+.source-head strong { font-size: .86rem; }
+.source-head span { color: var(--muted); font-size: .74rem; }
+.source-track { background: rgba(255, 255, 255, .06); height: .55rem; position: relative; }
+.source-have { height: 100%; }
+.source-need { border-right: 2px dashed var(--gold); bottom: 0; position: absolute; top: 0; }
+.source-row.short .source-have { background: var(--red); }
+.source-row.met .source-have { background: var(--jade-dim); }
+
+/* A rate with an interval is drawn as a point inside its band; the band is the honest part. */
+.rate-bar { display: grid; gap: .25rem; margin-bottom: .7rem; }
+.rate-head { align-items: baseline; display: flex; gap: .6rem; justify-content: space-between; }
+.rate-head strong { font-size: .9rem; }
+.rate-head span { color: var(--muted); font-size: .75rem; }
+.rate-track { background: rgba(255, 255, 255, .05); height: 1.1rem; position: relative; }
+.rate-band { background: rgba(216, 189, 127, .28); bottom: 0; position: absolute; top: 0; }
+.rate-point { background: var(--gold-bright); bottom: -2px; position: absolute; top: -2px; width: 2px; }
+.rate-half { background: rgba(255, 255, 255, .18); bottom: 0; left: 50%; position: absolute; top: 0; width: 1px; }
+.rate-scale { color: var(--muted); display: flex; font-size: .68rem; justify-content: space-between; }
+
+/* Wildcards read as four counters against what the log says you hold. */
+.wildcards { display: grid; gap: .4rem; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.wildcard { background: rgba(255, 255, 255, .03); border-top: 2px solid var(--gold); padding: .5rem .6rem; }
+.wildcard strong { display: block; font-family: "Palatino Linotype", Georgia, serif; font-size: 1.4rem; }
+.wildcard span { color: var(--muted); display: block; font-size: .72rem; }
+.wildcard small { color: var(--muted); display: block; margin-top: .25rem; }
+.wildcard.short strong { color: var(--red); }
+@media (max-width: 700px) { .wildcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

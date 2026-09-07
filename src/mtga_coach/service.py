@@ -56,6 +56,9 @@ class CoachService:
         self.watcher = None
         self.art = ArtCache(self.data_dir)
         self.keys = KeyStore(self.data_dir)
+        # The catalogue is a read-only file that never changes while the app runs, so a
+        # resolved card can be kept; the summary asks for the same ids on every call.
+        self._cards: dict[int, dict] = {}
 
     # ------------------------------------------------------------------ import
 
@@ -189,7 +192,7 @@ class CoachService:
     def _deck_summary(self, deck_id: str, games: list[dict]) -> dict:
         metrics = self._metrics(games)
         deck = games[-1].get("deck", {"main": [], "sideboard": []})
-        return {"id": deck_id, "label": self._deck_label(deck_id),
+        return {"id": deck_id, "label": self._deck_label(deck_id), "colours": self.deck_colours(deck),
                 "main_count": sum(item.get("quantity", 0) for item in deck.get("main", []) if isinstance(item, dict)),
                 "game_count": len(games), **metrics, "by_mode": self._by_mode_metrics(games),
                 "by_start": self._by_start_metrics(games), "deck": deck}
@@ -286,7 +289,23 @@ class CoachService:
     def cards(self, ids: list[int]) -> dict:
         from .catalog import resolve_cards
 
-        return {str(card_id): card for card_id, card in resolve_cards(ids, self.card_database_path).items()}
+        wanted = [int(card_id) for card_id in ids]
+        missing = [card_id for card_id in wanted if card_id not in self._cards]
+        if missing:
+            self._cards.update(resolve_cards(missing, self.card_database_path))
+        return {str(card_id): self._cards[card_id] for card_id in wanted if card_id in self._cards}
+
+    def deck_colours(self, deck: dict) -> list[str]:
+        """Colour identity of a list, in the printed WUBRG order.
+
+        Colour is the one visual property of a deck that is also a fact about it, so the
+        interface can lean on it instead of inventing a palette.
+        """
+        entries = [item for section in ("main", "sideboard")
+                   for item in deck.get(section, []) if isinstance(item, dict)]
+        cards = self.cards(sorted({item["id"] for item in entries if isinstance(item.get("id"), int)}))
+        seen = {colour for card in cards.values() for colour in card.get("colors") or []}
+        return [colour for colour in "WUBRG" if colour in seen]
 
     def _cards_for_game(self, game: dict) -> dict[int, dict]:
         card_ids: set[int] = set()
@@ -402,7 +421,7 @@ class CoachService:
         from .catalog import wildcard_cost
 
         return {
-            "deck_id": deck_id, "label": self._deck_label(deck_id),
+            "deck_id": deck_id, "label": self._deck_label(deck_id), "colours": self.deck_colours(deck),
             "games": len(games), **self._metrics(games), "by_start": self._by_start_metrics(games),
             "deck": deck, "cards": cards,
             "unresolved": [entry["card"].get("id") for entry in unresolved],
