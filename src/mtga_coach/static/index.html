@@ -1,81 +1,87 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#10231d">
-    <title>MTGA Coach — revisão local</title>
+    <title>MTGA Coach — local match review</title>
     <link rel="stylesheet" href="/app.css">
   </head>
   <body>
-    <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+    <a class="skip-link" href="#content">Skip to content</a>
     <header class="topbar">
       <div class="brand"><span class="brand-gem" aria-hidden="true">◆</span><span>MTGA <em>Coach</em></span></div>
-      <p class="provenance">Fonte declarada: <strong>logs locais</strong> <span id="capture-line"></span></p>
+      <p class="provenance">Source: <strong>local logs</strong> <span id="capture-line"></span></p>
       <div class="top-actions">
-        <button id="capture-toggle" class="button secondary" type="button">Acompanhar partidas</button>
-        <label class="button secondary file-button">Enviar log<input id="log-upload" type="file" accept=".log,.txt,application/octet-stream"></label>
-        <button id="import-configured" class="button primary" type="button">Importar logs</button>
+        <button id="capture-toggle" class="button secondary" type="button">Follow matches</button>
+        <label class="button secondary file-button">Upload log<input id="log-upload" type="file" accept=".log,.txt,application/octet-stream"></label>
+        <button id="import-configured" class="button primary" type="button">Import logs</button>
       </div>
     </header>
     <div class="shell">
-      <nav class="navigation" aria-label="Seções principais">
-        <button class="nav-item active" type="button" data-view="partidas"><span aria-hidden="true">⌁</span> Partidas</button>
+      <nav class="navigation" aria-label="Main sections">
+        <button class="nav-item active" type="button" data-view="matches"><span aria-hidden="true">⌁</span> Matches</button>
         <button class="nav-item" type="button" data-view="decks"><span aria-hidden="true">◇</span> Decks</button>
-        <button class="nav-item" type="button" data-view="estatisticas"><span aria-hidden="true">▤</span> Estatísticas</button>
-        <button class="nav-item" type="button" data-view="treino"><span aria-hidden="true">◌</span> Treino</button>
-        <div class="nav-foot"><span class="status-dot"></span> Revisão manual<br><small>IA não conectada</small></div>
+        <button class="nav-item" type="button" data-view="stats"><span aria-hidden="true">▤</span> Statistics</button>
+        <button class="nav-item" type="button" data-view="training"><span aria-hidden="true">◌</span> Training</button>
+        <button class="nav-item" type="button" data-view="settings"><span aria-hidden="true">⚙</span> Settings</button>
+        <div class="nav-foot"><span class="status-dot"></span> Manual review<br><small>AI not connected</small></div>
       </nav>
-      <main id="conteudo" class="content">
+      <main id="content" class="content">
         <div id="app-message" class="message" role="status" hidden></div>
 
-        <section id="view-partidas" class="view active" aria-labelledby="partidas-title">
+        <section id="view-matches" class="view active" aria-labelledby="matches-title">
           <div class="dashboard-heading">
-            <div><p class="eyebrow">SESSÃO LOCAL</p><h1 id="partidas-title">Reveja o que a partida registrou.</h1><p class="subtle">Resultados observados, posições reconstruídas e lacunas explícitas.</p></div>
-            <div class="mode-filter" role="group" aria-label="Filtrar modo"><button class="mode" data-mode="ambos" type="button">Ambos</button><button class="mode active" data-mode="BO1" type="button">BO1</button><button class="mode" data-mode="BO3" type="button">BO3</button></div>
+            <div><p class="eyebrow">LOCAL SESSION</p><h1 id="matches-title">Review what the game recorded.</h1><p class="subtle">Observed results, reconstructed positions, and gaps stated out loud.</p></div>
+            <div class="mode-filter" role="group" aria-label="Filter mode"><button class="mode" data-mode="both" type="button">Both</button><button class="mode active" data-mode="BO1" type="button">BO1</button><button class="mode" data-mode="BO3" type="button">BO3</button></div>
           </div>
           <section class="hero-panel">
-            <div id="hero-mode-label" class="hero-label">REVISÃO BO1</div><div><strong id="bo1-rate">—</strong><span id="hero-rate-label"> taxa de vitória BO1</span></div><p id="bo1-detail">Aguardando dados importados.</p>
+            <div id="hero-mode-label" class="hero-label">BO1 REVIEW</div><div><strong id="hero-rate">—</strong><span id="hero-rate-label"> BO1 win rate</span></div><p id="hero-detail">Waiting for imported data.</p>
           </section>
-          <section id="metrics" class="metrics" aria-label="Métricas da sessão"></section>
+          <section id="metrics" class="metrics" aria-label="Session metrics"></section>
           <section class="game-section">
-            <div class="section-heading"><div><p class="eyebrow">HISTÓRICO</p><h2>Jogos observados</h2></div><span id="games-count" class="count-chip">—</span></div>
+            <div class="section-heading"><div><p class="eyebrow">HISTORY</p><h2>Observed games</h2></div><span id="games-count" class="count-chip">—</span></div>
             <div id="game-list" class="game-list" aria-live="polite"></div>
           </section>
           <section id="replay-section" class="replay-section" hidden aria-labelledby="replay-title">
-            <div class="section-heading"><div><p class="eyebrow">REPLAY</p><h2 id="replay-title">Posição registrada</h2></div><button id="close-replay" class="text-button" type="button">Fechar replay</button></div>
+            <div class="section-heading"><div><p class="eyebrow">REPLAY</p><h2 id="replay-title">Recorded position</h2></div><button id="close-replay" class="text-button" type="button">Close replay</button></div>
             <div class="replay-layout"><div id="replay-main" class="replay-main"></div><aside id="decision-sidebar" class="decision-sidebar"></aside></div>
           </section>
         </section>
 
         <section id="view-decks" class="view" aria-labelledby="decks-title">
-          <div class="dashboard-heading"><div><p class="eyebrow">VERSÕES OBSERVADAS</p><h1 id="decks-title">Decks e hipóteses.</h1><p class="subtle">A composição vem dos logs; uma hipótese não altera o deck ativo.</p></div></div>
+          <div class="dashboard-heading"><div><p class="eyebrow">OBSERVED VERSIONS</p><h1 id="decks-title">Decks and hypotheses.</h1><p class="subtle">The composition comes from the logs; a hypothesis never changes the deck you play.</p></div></div>
           <div class="decks-layout">
             <section id="deck-list" class="deck-list"></section>
             <section id="deck-detail" class="deck-detail"></section>
             <aside class="experiment-panel">
-              <p class="eyebrow">EXPERIMENTO</p><h2>Registrar hipótese</h2>
-              <p class="subtle">Texto do usuário. Não é uma recomendação automática.</p>
+              <p class="eyebrow">EXPERIMENT</p><h2>Record a hypothesis</h2>
+              <p class="subtle">Your own words. Not an automated recommendation.</p>
               <form id="experiment-form">
                 <label>Deck<select id="experiment-deck" name="deck_id" required></select></label>
-                <label>Título<input name="title" maxlength="120" required placeholder="Ex.: reduzir cartas de custo alto"></label>
-                <label>Hipótese<textarea name="hypothesis" maxlength="1000" required placeholder="O que pretende observar na próxima amostra?"></textarea></label>
-                <label>Alterações propostas<textarea name="changes" maxlength="1000" placeholder="Ex.: -2 carta A, +2 carta B"></textarea></label>
-                <button class="button primary" type="submit">Registrar hipótese</button>
+                <label>Title<input name="title" maxlength="120" required placeholder="e.g. cut the top of the curve"></label>
+                <label>Hypothesis<textarea name="hypothesis" maxlength="1000" required placeholder="What do you expect to see in the next sample?"></textarea></label>
+                <label>Proposed changes<textarea name="changes" maxlength="1000" placeholder="e.g. -2 card A, +2 card B"></textarea></label>
+                <button class="button primary" type="submit">Record hypothesis</button>
               </form>
               <div id="experiments" class="experiments"></div>
             </aside>
           </div>
         </section>
 
-        <section id="view-estatisticas" class="view" aria-labelledby="stats-title">
-          <div class="dashboard-heading"><div><p class="eyebrow">AMOSTRA PESSOAL</p><h1 id="stats-title">O que a amostra sustenta.</h1><p class="subtle">Toda taxa vem acompanhada do intervalo e do número de partidas que a produziu.</p></div></div>
+        <section id="view-stats" class="view" aria-labelledby="stats-title">
+          <div class="dashboard-heading"><div><p class="eyebrow">PERSONAL SAMPLE</p><h1 id="stats-title">What the sample supports.</h1><p class="subtle">Every rate travels with its interval and the number of games behind it.</p></div></div>
           <div id="stats-body"></div>
         </section>
 
-        <section id="view-treino" class="view" aria-labelledby="treino-title">
-          <p class="eyebrow">REVISÃO MANUAL</p><h1 id="treino-title">Notas para retomar decisões.</h1>
-          <p class="subtle">Abra uma partida, escolha uma posição e marque a reflexão que quer revisitar. O contexto só sai do recorte sanitizado pelo servidor.</p>
+        <section id="view-settings" class="view" aria-labelledby="settings-title">
+          <div class="dashboard-heading"><div><p class="eyebrow">WHAT LEAVES THIS MACHINE</p><h1 id="settings-title">Settings.</h1><p class="subtle">The app runs offline. The two options below are the only ones that use the network, and both start switched off.</p></div></div>
+          <div id="settings-body"></div>
+        </section>
+
+        <section id="view-training" class="view" aria-labelledby="training-title">
+          <p class="eyebrow">MANUAL REVIEW</p><h1 id="training-title">Notes to come back to.</h1>
+          <p class="subtle">Open a game, pick a position, and write down the thought you want to revisit. Context only ever leaves through the server's sanitised export.</p>
           <div id="training-notes" class="training-notes"></div>
         </section>
       </main>

@@ -15,11 +15,11 @@ export function selectReplayFrame(frames, position) {
 }
 
 export function filterGamesByMode(games, mode) {
-  return mode === 'ambos' ? games : games.filter((game) => game.mode === mode);
+  return mode === 'both' ? games : games.filter((game) => game.mode === mode);
 }
 
 export function modeMetrics(summary, games, mode) {
-  if (mode === 'ambos') return {
+  if (mode === 'both') return {
     games: summary.games ?? 0, completed: summary.completed ?? 0, wins: summary.wins ?? 0,
     losses: summary.losses ?? 0, draws: summary.draws ?? 0, matches: summary.matches ?? 0,
     win_rate: summary.win_rate ?? null,
@@ -54,7 +54,8 @@ export function adjacentDecisionPosition(frames, currentPosition, direction) {
 
 const state = {
   summary: null, games: [], mode: 'BO1', detail: null, framePosition: 0, cards: {}, deckCards: {},
-  experiments: [], frameCache: new Map(), sidebarTab: 'decisao', deckReport: null, notes: [],
+  experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
+  coachAnswer: null, coachMode: 'explain', coachBusy: false,
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -62,7 +63,7 @@ async function request(path, options = {}) {
   const response = await fetch(path, buildRequestOptions(options));
   let body = null;
   try { body = await response.json(); } catch { /* Errors without JSON keep their status. */ }
-  if (!response.ok) throw new Error(body?.error || `A API respondeu ${response.status}.`);
+  if (!response.ok) throw new Error(body?.error || `The API answered ${response.status}.`);
   return body;
 }
 
@@ -92,19 +93,19 @@ function empty(container, title, detail) {
 }
 
 function qualityLabel(quality) {
-  return ({ complete: 'Sem lacuna detectada', degraded: 'Lacuna na reconstrução', blocked: 'Trecho bloqueado' })[quality] ?? 'Qualidade não informada';
+  return ({ complete: 'No gap detected', degraded: 'Gap in the reconstruction', blocked: 'Blocked stretch' })[quality] ?? 'Quality not reported';
 }
 
-function resultLabel(result) { return ({ win: 'Vitória', loss: 'Derrota', draw: 'Empate', unknown: 'Sem desfecho' })[result] ?? 'Sem desfecho'; }
-function startLabel(onPlay) { return onPlay === true ? 'Jogou primeiro' : onPlay === false ? 'Jogou depois' : 'Ordem não registrada'; }
-function cardName(id) { const card = state.cards[id] || state.deckCards[id]; return card?.name || card?.name_en || `Carta não resolvida #${id}`; }
+function resultLabel(result) { return ({ win: 'Win', loss: 'Loss', draw: 'Draw', unknown: 'No result' })[result] ?? 'No result'; }
+function startLabel(onPlay) { return onPlay === true ? 'On the play' : onPlay === false ? 'On the draw' : 'Order not recorded'; }
+function cardName(id) { const card = state.cards[id] || state.deckCards[id]; return card?.name || card?.name_en || `Unresolved card #${id}`; }
 function listText(values) { return values?.length ? values.join(' · ') : '—'; }
-function percent(value) { return typeof value === 'number' ? `${(value * 100).toFixed(1).replace('.', ',')}%` : '—'; }
+function percent(value) { return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—'; }
 function intervalText(interval) {
-  if (!interval) return 'sem amostra';
-  return `${percent(interval.rate)} · IC95 ${percent(interval.low)}–${percent(interval.high)} · n=${interval.n}`;
+  if (!interval) return 'no sample';
+  return `${percent(interval.rate)} · 95% CI ${percent(interval.low)}–${percent(interval.high)} · n=${interval.n}`;
 }
-function bytesText(value) { return typeof value === 'number' ? `${(value / 1e6).toFixed(1).replace('.', ',')} MB` : '—'; }
+function bytesText(value) { return typeof value === 'number' ? `${(value / 1e6).toFixed(1)} MB` : '—'; }
 
 function appendMetric(container, value, label, detail = '') {
   const card = element('article', 'metric');
@@ -115,43 +116,51 @@ function appendMetric(container, value, label, detail = '') {
 
 function appendStageMetric(container, label, stage) {
   if (!stage || typeof stage !== 'object') return;
-  appendMetric(container, percent(stage.win_rate), label, `${stage.games ?? 0} jogos · ${stage.wins ?? 0} vitórias · ${stage.losses ?? 0} derrotas`);
+  appendMetric(container, percent(stage.win_rate), label, `${stage.games ?? 0} games · ${stage.wins ?? 0} wins · ${stage.losses ?? 0} losses`);
 }
 
 function renderSummary() {
   const metrics = $('#metrics');
   metrics.replaceChildren();
   const summary = state.summary;
-  if (!summary) { empty(metrics, 'Carregando resumo…', 'Consultando os logs locais já importados.'); return; }
+  if (!summary) { empty(metrics, 'Loading summary…', 'Reading the logs already imported.'); return; }
   renderCaptureLine(summary.capture);
+  renderFoot(summary);
   const scoped = modeMetrics(summary, state.games, state.mode);
   const bo1 = modeMetrics(summary, state.games, 'BO1');
   const bo3 = modeMetrics(summary, state.games, 'BO3');
-  const modeLabel = state.mode === 'ambos' ? 'TODOS OS MODOS' : `REVISÃO ${state.mode}`;
-  $('#hero-mode-label').textContent = state.mode === 'ambos' ? 'COMPARAÇÃO POR MODO' : modeLabel;
-  $('#hero-rate-label').textContent = state.mode === 'ambos' ? ' taxas separadas' : ` taxa de vitória ${state.mode}`;
-  if (state.mode === 'ambos') {
-    $('#bo1-rate').textContent = 'BO1 × BO3';
-    $('#bo1-detail').textContent = `BO1: ${percent(bo1.win_rate)} em ${bo1.games} jogos · BO3: ${percent(bo3.win_rate)} em ${bo3.games} jogos.`;
-    appendMetric(metrics, summary.games ?? 0, 'jogos observados', 'BO1 e BO3 apresentados separadamente');
-    appendMetric(metrics, percent(bo1.win_rate), 'taxa BO1', `${bo1.wins} vitórias · ${bo1.losses} derrotas`);
-    appendMetric(metrics, percent(bo3.win_rate), 'taxa BO3', `${bo3.wins} vitórias · ${bo3.losses} derrotas`);
-    appendMetric(metrics, summary.matches ?? 0, 'confrontos observados', 'sem taxa mista');
+  const modeLabel = state.mode === 'both' ? 'ALL MODES' : `${state.mode} REVIEW`;
+  $('#hero-mode-label').textContent = state.mode === 'both' ? 'MODE COMPARISON' : modeLabel;
+  $('#hero-rate-label').textContent = state.mode === 'both' ? ' rates kept apart' : ` ${state.mode} win rate`;
+  if (state.mode === 'both') {
+    $('#hero-rate').textContent = 'BO1 × BO3';
+    $('#hero-detail').textContent = `BO1: ${percent(bo1.win_rate)} over ${bo1.games} games · BO3: ${percent(bo3.win_rate)} over ${bo3.games} games.`;
+    appendMetric(metrics, summary.games ?? 0, 'games observed', 'BO1 and BO3 reported separately');
+    appendMetric(metrics, percent(bo1.win_rate), 'BO1 rate', `${bo1.wins} wins · ${bo1.losses} losses`);
+    appendMetric(metrics, percent(bo3.win_rate), 'BO3 rate', `${bo3.wins} wins · ${bo3.losses} losses`);
+    appendMetric(metrics, summary.matches ?? 0, 'matches observed', 'no blended rate');
     return;
   }
-  appendMetric(metrics, scoped.games, `jogos ${state.mode}`);
-  appendMetric(metrics, percent(scoped.win_rate), 'taxa de vitória', `${scoped.wins} vitórias · ${scoped.losses} derrotas`);
-  appendMetric(metrics, scoped.completed, 'com desfecho', `${scoped.draws} empates`);
-  appendMetric(metrics, scoped.matches, 'confrontos', `recorte ${state.mode}`);
+  appendMetric(metrics, scoped.games, `${state.mode} games`);
+  appendMetric(metrics, percent(scoped.win_rate), 'win rate', `${scoped.wins} wins · ${scoped.losses} losses`);
+  appendMetric(metrics, scoped.completed, 'with a result', `${scoped.draws} draws`);
+  appendMetric(metrics, scoped.matches, 'matches', `${state.mode} only`);
   if (state.mode === 'BO3') {
     const bo3Summary = summary.by_mode?.BO3;
     const stages = bo3Summary?.by_stage;
-    appendMetric(metrics, percent(bo3Summary?.match_win_rate), 'taxa por confronto', typeof bo3Summary?.match_wins === 'number' ? `${bo3Summary.match_wins} vitórias · ${bo3Summary.match_losses ?? 0} derrotas` : 'Resultado de confronto não recebido.');
-    appendStageMetric(metrics, 'Jogo 1', stages?.game1);
-    appendStageMetric(metrics, 'Jogos 2/3', stages?.post_sideboard);
+    appendMetric(metrics, percent(bo3Summary?.match_win_rate), 'match win rate', typeof bo3Summary?.match_wins === 'number' ? `${bo3Summary.match_wins} wins · ${bo3Summary.match_losses ?? 0} losses` : 'No match-level result received.');
+    appendStageMetric(metrics, 'Game 1', stages?.game1);
+    appendStageMetric(metrics, 'Games 2-3', stages?.post_sideboard);
   }
-  $('#bo1-rate').textContent = percent(scoped.win_rate);
-  $('#bo1-detail').textContent = scoped.games ? `${scoped.games} jogos observados · ${scoped.wins} vitórias · ${scoped.losses} derrotas.` : `Nenhum jogo ${state.mode} nesta importação.`;
+  $('#hero-rate').textContent = percent(scoped.win_rate);
+  $('#hero-detail').textContent = scoped.games ? `${scoped.games} games observed · ${scoped.wins} wins · ${scoped.losses} losses.` : `No ${state.mode} game in this import.`;
+}
+
+function renderFoot(summary) {
+  const foot = document.querySelector('.nav-foot small');
+  if (!foot) return;
+  const coach = summary.coach ?? {};
+  foot.textContent = coach.ready ? `AI: ${coach.model}` : 'AI not connected';
 }
 
 function renderCaptureLine(capture) {
@@ -159,11 +168,11 @@ function renderCaptureLine(capture) {
   const button = $('#capture-toggle');
   if (!capture) { line.textContent = ''; return; }
   const running = Boolean(capture.running);
-  button.textContent = running ? 'Parar acompanhamento' : 'Acompanhar partidas';
+  button.textContent = running ? 'Stop following' : 'Follow matches';
   button.classList.toggle('primary', running);
   const detail = running
-    ? `acompanhando · ${bytesText(capture.bytes_read)} lidos · ${capture.sessions ?? 0} sessão(ões)`
-    : 'acompanhamento parado — o Arena apaga o log ao reiniciar';
+    ? `following · ${bytesText(capture.bytes_read)} read · ${capture.sessions ?? 0} session(s)`
+    : 'not following — Arena wipes the log when the client restarts';
   line.textContent = ` · ${detail}${capture.error ? ` · ${capture.error}` : ''}`;
 }
 
@@ -171,14 +180,14 @@ function gameCard(game) {
   const row = element('button', `game-row quality-${game.quality}`, '');
   row.type = 'button';
   const identity = element('div', 'game-identity');
-  identity.append(element('strong', null, `${game.deck_label || 'Composição'} · jogo ${game.game_number ?? '—'}`),
-    element('span', null, `${game.format || 'Formato não informado'} · ${game.mode || 'Modo não informado'}${game.opponent_name ? ` · contra ${game.opponent_name}` : ''}`));
+  identity.append(element('strong', null, `${game.deck_label || 'Composition'} · game ${game.game_number ?? '—'}`),
+    element('span', null, `${game.format || 'Format unknown'} · ${game.mode || 'Mode unknown'}${game.opponent_name ? ` · vs ${game.opponent_name}` : ''}`));
   const meta = element('div', 'game-meta');
   meta.append(element('span', `result ${game.result}`, resultLabel(game.result)),
     element('span', null, startLabel(game.on_play)),
     element('span', 'quality-badge', qualityLabel(game.quality)),
-    element('span', null, `${game.turns ?? 0} turnos`),
-    element('span', null, `${game.decision_count ?? 0} decisões`));
+    element('span', null, `${game.turns ?? 0} turns`),
+    element('span', null, `${game.decision_count ?? 0} decisions`));
   row.append(identity, meta);
   row.addEventListener('click', () => openGame(game.id));
   return row;
@@ -187,9 +196,9 @@ function gameCard(game) {
 function renderGames() {
   const target = $('#game-list');
   const games = filterGamesByMode(state.games, state.mode);
-  $('#games-count').textContent = `${games.length} jogo${games.length === 1 ? '' : 's'}`;
+  $('#games-count').textContent = `${games.length} game${games.length === 1 ? '' : 's'}`;
   target.replaceChildren();
-  if (!games.length) return empty(target, 'Nenhum jogo neste filtro.', state.games.length ? 'Escolha BO1, BO3 ou Ambos.' : 'Importe seus logs locais para iniciar a revisão.');
+  if (!games.length) return empty(target, 'No game in this filter.', state.games.length ? 'Pick BO1, BO3 or Both.' : 'Import your local logs to start reviewing.');
   games.forEach((game) => target.append(gameCard(game)));
 }
 
@@ -221,20 +230,29 @@ function zoneBlock(zone, title) {
     objects.forEach((object) => cards.append(cardTile(object)));
     block.append(cards);
   }
-  if (zone.hidden_count) block.append(element('small', 'hidden-count', `${zone.hidden_count} carta${zone.hidden_count === 1 ? '' : 's'} oculta${zone.hidden_count === 1 ? '' : 's'}`));
-  if (!objects.length && !zone.hidden_count) block.append(element('small', 'empty-zone', 'Sem objetos conhecidos.'));
+  if (zone.hidden_count) block.append(element('small', 'hidden-count', `${zone.hidden_count} hidden card${zone.hidden_count === 1 ? '' : 's'}`));
+  if (!objects.length && !zone.hidden_count) block.append(element('small', 'empty-zone', 'No known objects.'));
   return block;
+}
+
+function artEnabled() { return Boolean(state.summary?.art?.enabled); }
+
+function applyArt(node, cardId) {
+  if (!artEnabled() || !cardId) return;
+  node.classList.add('has-art');
+  node.style.backgroundImage = `linear-gradient(to right, rgba(12,22,18,.92) 42%, rgba(12,22,18,.45)), url("/art/${encodeURIComponent(cardId)}.jpg")`;
 }
 
 function cardTile(object) {
   const card = state.cards[object.card_id];
   const colors = card?.colors?.length ? card.colors.join('').toLowerCase() : 'unknown';
   const tile = element('button', `card-tile mana-${colors}`, ''); tile.type = 'button';
-  tile.title = 'Inspecionar carta';
+  applyArt(tile, object.card_id);
+  tile.title = 'Inspect card';
   tile.append(element('span', 'mana-line', card?.mana_cost || '—'), element('strong', null, cardName(object.card_id)));
   const hasPower = object.power !== null && object.power !== undefined && String(object.power).trim() !== '';
   const hasToughness = object.toughness !== null && object.toughness !== undefined && String(object.toughness).trim() !== '';
-  const bits = [object.tapped ? 'Virada' : null, hasPower || hasToughness ? `${hasPower ? object.power : '?'}/${hasToughness ? object.toughness : '?'}` : null].filter(Boolean);
+  const bits = [object.tapped ? 'Tapped' : null, hasPower || hasToughness ? `${hasPower ? object.power : '?'}/${hasToughness ? object.toughness : '?'}` : null].filter(Boolean);
   if (bits.length) tile.append(element('small', null, bits.join(' · ')));
   tile.addEventListener('click', () => inspectCard(object.card_id));
   return tile;
@@ -247,7 +265,7 @@ function battlefieldZones(frame) {
   const controller = (object) => object.controller ?? object.owner;
   const own = { ...battlefield, objects: battlefield.objects?.filter((object) => controller(object) === selfSeat) ?? [] };
   const opponent = { ...battlefield, objects: battlefield.objects?.filter((object) => !own.objects.includes(object)) ?? [] };
-  return [zoneBlock(own, 'Seu campo'), zoneBlock(opponent, 'Campo adversário')];
+  return [zoneBlock(own, 'Your battlefield'), zoneBlock(opponent, 'Opponent battlefield')];
 }
 
 async function renderReplay() {
@@ -259,24 +277,24 @@ async function renderReplay() {
   state.framePosition = position;
   const frame = index.length ? await frameAt(position) : null;
   target.replaceChildren();
-  if (!frame) { empty(target, 'Sem quadros reconstruídos.', 'O log não registrou uma posição segura para replay.'); renderSidebar(null); return; }
+  if (!frame) { empty(target, 'No reconstructed frames.', 'The log recorded no position safe enough to replay.'); renderSidebar(null); return; }
   await loadCards(frameCardIds(frame));
   const controls = element('div', 'replay-controls');
   const back = element('button', 'icon-button', '←'); back.type = 'button'; back.disabled = position === 0; back.addEventListener('click', () => changeFrame(position - 1));
   const next = element('button', 'icon-button', '→'); next.type = 'button'; next.disabled = position >= index.length - 1; next.addEventListener('click', () => changeFrame(position + 1));
-  const slider = document.createElement('input'); slider.type = 'range'; slider.min = '0'; slider.max = String(Math.max(index.length - 1, 0)); slider.value = String(position); slider.setAttribute('aria-label', 'Quadro do replay'); slider.addEventListener('change', () => changeFrame(Number(slider.value)));
-  controls.append(back, slider, next, element('span', 'frame-count', `Quadro ${position + 1}/${index.length}`)); target.append(controls);
+  const slider = document.createElement('input'); slider.type = 'range'; slider.min = '0'; slider.max = String(Math.max(index.length - 1, 0)); slider.value = String(position); slider.setAttribute('aria-label', 'Replay frame'); slider.addEventListener('change', () => changeFrame(Number(slider.value)));
+  controls.append(back, slider, next, element('span', 'frame-count', `Frame ${position + 1}/${index.length}`)); target.append(controls);
   const heading = element('div', 'position-heading');
-  heading.append(element('strong', null, `Turno ${frame.turn ?? '—'}`), element('span', null, listText([frame.phase, frame.step])), element('span', null, `Linha de origem ${frame.source_line ?? 'não informada'}`));
+  heading.append(element('strong', null, `Turn ${frame.turn ?? '—'}`), element('span', null, listText([frame.phase, frame.step])), element('span', null, `Source line ${frame.source_line ?? 'unknown'}`));
   target.append(heading);
   const warning = frame.warnings?.[0] ?? '';
   if (frame.quality !== 'complete' || warning) target.append(element('div', `quality-notice ${frame.quality}`, warning || qualityLabel(frame.quality)));
   const lives = element('div', 'life-row');
-  (frame.players ?? []).forEach((player) => lives.append(element('div', player.is_self ? 'life self' : 'life', `${player.is_self ? 'Você' : 'Adversário'} · ${player.life ?? '—'} vida`)));
+  (frame.players ?? []).forEach((player) => lives.append(element('div', player.is_self ? 'life self' : 'life', `${player.is_self ? 'You' : 'Opponent'} · ${player.life ?? '—'} life`)));
   target.append(lives);
   if (frame.events?.length) {
     const strip = element('div', 'event-strip');
-    strip.append(element('h4', null, 'Aconteceu neste estado'));
+    strip.append(element('h4', null, 'What happened here'));
     frame.events.forEach((event) => strip.append(element('span', `event-chip event-${event.kind}`, describeEvent(event))));
     target.append(strip);
   }
@@ -284,7 +302,7 @@ async function renderReplay() {
   battlefieldZones(frame).forEach((zone) => board.append(zone));
   const otherZones = frame.zones?.filter((zone) => !(zone.type === 'Battlefield' && zone.owner === 0)) ?? [];
   otherZones.forEach((zone) => {
-    const owner = zone.owner === 0 ? 'Zona compartilhada' : (zone.owner === state.detail.self_seat ? 'Você' : 'Adversário');
+    const owner = zone.owner === 0 ? 'Shared zone' : (zone.owner === state.detail.self_seat ? 'You' : 'Opponent');
     board.append(zoneBlock(zone, `${owner} · ${zone.type}`));
   });
   target.append(board);
@@ -300,19 +318,20 @@ function frameCardIds(frame) {
 }
 
 function describeEvent(event) {
-  const who = event.seat ? (event.seat === state.detail?.self_seat ? 'Você' : 'Adversário') : '';
+  const who = event.seat ? (event.seat === state.detail?.self_seat ? 'You' : 'Opponent') : '';
   const name = event.card_id ? cardName(event.card_id) : '';
-  if (event.kind === 'life') return `${who}: vida ${event.amount > 0 ? '+' : ''}${event.amount}`;
-  if (event.kind === 'damage') return `${name} causou ${event.amount} de dano`;
-  if (event.kind === 'turn') return `Turno de ${who || '—'}`;
-  if (event.kind === 'draw' && !event.card_id) return `${who} comprou (não revelada)`;
+  if (event.kind === 'life') return `${who}: life ${event.amount > 0 ? '+' : ''}${event.amount}`;
+  if (event.kind === 'damage') return `${name} dealt ${event.amount} damage`;
+  if (event.kind === 'turn') return `${who || '—'}'s turn`;
+  if (event.kind === 'draw' && !event.card_id) return `${who} drew (undisclosed)`;
   return `${event.label ?? event.kind}${name ? `: ${name}` : ''}`;
 }
 
 // ---------------------------------------------------------------- sidebar
 
 const SIDEBAR_TABS = [
-  ['decisao', 'Decisão'], ['biblioteca', 'Biblioteca'], ['adversario', 'Adversário'], ['linha', 'Linha do tempo'],
+  ['decision', 'Decision'], ['library', 'Library'], ['opponent', 'Opponent'],
+  ['timeline', 'Timeline'], ['reading', 'AI reading'],
 ];
 
 function renderSidebar(frame) {
@@ -328,73 +347,74 @@ function renderSidebar(frame) {
   target.append(tabs);
   const body = element('div', 'sidebar-body');
   target.append(body);
-  if (!frame) { body.append(element('p', 'subtle', 'Selecione um quadro com dados de decisão.')); return; }
-  if (state.sidebarTab === 'decisao') renderDecisionTab(body, frame);
-  if (state.sidebarTab === 'biblioteca') renderLibraryTab(body, frame);
-  if (state.sidebarTab === 'adversario') renderOpponentTab(body);
-  if (state.sidebarTab === 'linha') renderTimelineTab(body);
+  if (!frame) { body.append(element('p', 'subtle', 'Pick a frame that carries decision data.')); return; }
+  if (state.sidebarTab === 'decision') renderDecisionTab(body, frame);
+  if (state.sidebarTab === 'library') renderLibraryTab(body, frame);
+  if (state.sidebarTab === 'opponent') renderOpponentTab(body);
+  if (state.sidebarTab === 'timeline') renderTimelineTab(body);
+  if (state.sidebarTab === 'reading') renderCoachTab(body, frame);
 }
 
 function actionText(action, sourceLine) {
   const names = action.card_ids?.map((id) => cardName(id)).join(', ');
-  const label = action.label || action.type || 'Ação sem rótulo';
+  const label = action.label || action.type || 'Unlabelled action';
   const source = action.source_line ?? sourceLine;
-  return [label, names, source !== null && source !== undefined ? `linha ${source}` : null].filter(Boolean).join(' · ');
+  return [label, names, source !== null && source !== undefined ? `line ${source}` : null].filter(Boolean).join(' · ');
 }
 
 function actionList(title, actions, sourceLine) {
   const area = element('div', 'action-list');
   area.append(element('h4', null, title));
-  if (!actions?.length) area.append(element('p', 'subtle', 'Nenhuma ação registrada.'));
+  if (!actions?.length) area.append(element('p', 'subtle', 'No action recorded.'));
   else actions.forEach((action) => area.append(element('p', null, actionText(action, sourceLine))));
   return area;
 }
 
 function renderDecisionTab(target, frame) {
-  target.append(element('p', 'eyebrow', 'DECISÃO SELECIONADA'), element('h3', null, `Quadro ${frame.index}`));
-  target.append(actionList('Realizada', frame.action ? [frame.action] : [], frame.source_line),
-    actionList('Disponíveis', frame.available_actions ?? frame.actions ?? [], frame.source_line));
+  target.append(element('p', 'eyebrow', 'SELECTED DECISION'), element('h3', null, `Frame ${frame.index}`));
+  target.append(actionList('Taken', frame.action ? [frame.action] : [], frame.source_line),
+    actionList('Available', frame.available_actions ?? frame.actions ?? [], frame.source_line));
   const index = state.detail.frame_index ?? [];
   const previousDecision = adjacentDecisionPosition(index, state.framePosition, -1);
   const nextDecision = adjacentDecisionPosition(index, state.framePosition, 1);
   const navigation = element('div', 'decision-navigation');
-  const previous = element('button', 'text-button', '← Decisão anterior'); previous.type = 'button'; previous.disabled = previousDecision === null; previous.addEventListener('click', () => changeFrame(previousDecision));
-  const next = element('button', 'text-button', 'Próxima decisão →'); next.type = 'button'; next.disabled = nextDecision === null; next.addEventListener('click', () => changeFrame(nextDecision));
+  const previous = element('button', 'text-button', '← Previous decision'); previous.type = 'button'; previous.disabled = previousDecision === null; previous.addEventListener('click', () => changeFrame(previousDecision));
+  const next = element('button', 'text-button', 'Next decision →'); next.type = 'button'; next.disabled = nextDecision === null; next.addEventListener('click', () => changeFrame(nextDecision));
   navigation.append(previous, next); target.append(navigation);
   const safe = frame.quality === 'complete';
-  target.append(element('p', safe ? 'eligibility yes' : 'eligibility no', safe ? 'Contexto elegível para revisão externa.' : 'Trecho não elegível: a qualidade impede contexto tático.'));
+  target.append(element('p', safe ? 'eligibility yes' : 'eligibility no', safe ? 'Context eligible for external review.' : 'Not eligible: the reconstruction quality blocks tactical context.'));
   const prompts = element('div', 'review-prompts');
-  prompts.append(element('h4', null, 'Perguntas de revisão manual'), element('p', null, 'Que informação já era conhecida?'), element('p', null, 'Que alternativa registrada merecia comparação?'), element('p', null, 'Que hipótese você quer testar?'));
+  prompts.append(element('h4', null, 'Questions to ask yourself'), element('p', null, 'What did you already know here?'), element('p', null, 'Which recorded alternative deserved a look?'), element('p', null, 'What hypothesis do you want to test?'));
   target.append(prompts);
   const noteForm = document.createElement('form'); noteForm.className = 'note-form';
-  const text = document.createElement('textarea'); text.name = 'body'; text.maxLength = 2000; text.required = true; text.placeholder = 'Sua observação sobre esta posição…';
-  const save = element('button', 'button secondary', 'Salvar nota'); save.type = 'submit';
-  noteForm.append(element('label', null, 'Nota manual'), text, save);
+  const text = document.createElement('textarea'); text.name = 'body'; text.maxLength = 2000; text.required = true; text.placeholder = 'Your note on this position…';
+  const save = element('button', 'button secondary', 'Save note'); save.type = 'submit';
+  noteForm.append(element('label', null, 'Manual note'), text, save);
   noteForm.addEventListener('submit', (event) => saveNote(event, frame.index, text));
   target.append(noteForm);
-  const context = element('button', 'button primary', 'Copiar contexto'); context.type = 'button'; context.disabled = !safe;
+  const context = element('button', 'button primary', 'Copy context'); context.type = 'button'; context.disabled = !safe;
   context.addEventListener('click', () => copyContext(frame.index)); target.append(context);
   const inspect = element('div', 'card-inspector'); inspect.id = 'card-inspector';
-  inspect.append(element('h4', null, 'Carta selecionada'), element('p', 'subtle', 'Clique em uma carta conhecida para ler o texto do catálogo local.'));
+  inspect.append(element('h4', null, 'Selected card'), element('p', 'subtle', 'Click a known card to read its text from the local catalogue.'));
   target.append(inspect);
 }
 
 async function renderLibraryTab(target, frame) {
-  target.append(element('p', 'eyebrow', 'SEU GRIMÓRIO NESTE INSTANTE'));
-  target.append(element('p', 'subtle', 'Calculado a partir da lista registrada menos cada cópia já vista. Só vale para o seu deck.'));
-  const holder = element('div', 'library-body', 'Consultando…');
+  target.append(element('p', 'eyebrow', 'YOUR LIBRARY AT THIS INSTANT'));
+  target.append(element('p', 'subtle', 'Registered list minus every copy already seen. Exact for your deck only.'));
+  const holder = element('div', 'library-body', 'Loading…');
   target.append(holder);
   try {
     const payload = await request(`/api/games/${encodeURIComponent(state.detail.id)}/library?index=${frame.index}`);
     holder.replaceChildren();
-    if (!payload.eligible) { holder.append(element('p', 'gap', payload.reason || 'Indisponível.')); return; }
-    holder.append(element('h3', null, `${payload.size} cartas restantes`));
-    holder.append(element('p', 'subtle', `${payload.lands} terras · ${percent(payload.land_ratio)} do grimório${payload.matches_report ? '' : ' · divergente da contagem do log'}`));
+    if (!payload.eligible) { holder.append(element('p', 'gap', payload.reason || 'Unavailable.')); return; }
+    holder.append(element('h3', null, `${payload.size} cards left`));
+    holder.append(element('p', 'subtle', `${payload.lands} lands · ${percent(payload.land_ratio)} of the library${payload.matches_report ? '' : ' · disagrees with the log count'}`));
     const list = element('div', 'library-list');
     payload.entries.slice(0, 24).forEach((entry) => {
       const row = element('div', 'library-row');
       row.append(element('strong', null, `${entry.quantity}× ${entry.name}`),
-        element('span', null, `próxima compra ${percent(entry.next_draw)} · em 3 compras ${percent(entry.within_three)}`));
+        element('span', null, `next draw ${percent(entry.next_draw)} · within 3 draws ${percent(entry.within_three)}`));
       list.append(row);
     });
     holder.append(list);
@@ -402,37 +422,37 @@ async function renderLibraryTab(target, frame) {
 }
 
 async function renderOpponentTab(target) {
-  target.append(element('p', 'eyebrow', 'O QUE O ADVERSÁRIO MOSTROU'));
-  const holder = element('div', 'opponent-body', 'Consultando…');
+  target.append(element('p', 'eyebrow', 'WHAT THE OPPONENT SHOWED'));
+  const holder = element('div', 'opponent-body', 'Loading…');
   target.append(holder);
   try {
     const payload = await request(`/api/games/${encodeURIComponent(state.detail.id)}/opponent`);
     holder.replaceChildren();
     holder.append(element('p', 'subtle', payload.note));
     const colours = Object.entries(payload.colours ?? {});
-    holder.append(element('p', null, colours.length ? `Cores vistas: ${colours.map(([colour, count]) => `${colour} (${count})`).join(' · ')}` : 'Nenhuma cor identificada ainda.'));
-    if (payload.prior_games?.length) holder.append(element('p', 'gap', `${payload.prior_games.length} carta(s) vistas em jogos anteriores deste confronto.`));
+    holder.append(element('p', null, colours.length ? `Colours seen: ${colours.map(([colour, count]) => `${colour} (${count})`).join(' · ')}` : 'No colour identified yet.'));
+    if (payload.prior_games?.length) holder.append(element('p', 'gap', `${payload.prior_games.length} card(s) seen in earlier games of this match.`));
     const list = element('div', 'library-list');
     (payload.cards ?? []).forEach((card) => {
       const row = element('div', 'library-row');
-      row.append(element('strong', null, card.name), element('span', null, `${card.mana_cost || '—'} · ${card.type_line || 'tipo não resolvido'}`));
+      row.append(element('strong', null, card.name), element('span', null, `${card.mana_cost || '—'} · ${card.type_line || 'type unresolved'}`));
       list.append(row);
     });
-    holder.append((payload.cards ?? []).length ? list : element('p', 'subtle', 'Nada revelado até aqui.'));
+    holder.append((payload.cards ?? []).length ? list : element('p', 'subtle', 'Nothing revealed so far.'));
   } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
 }
 
 async function renderTimelineTab(target) {
-  target.append(element('p', 'eyebrow', 'LINHA DO TEMPO'));
-  const holder = element('div', 'timeline-body', 'Consultando…');
+  target.append(element('p', 'eyebrow', 'TIMELINE'));
+  const holder = element('div', 'timeline-body', 'Loading…');
   target.append(holder);
   try {
     const payload = await request(`/api/games/${encodeURIComponent(state.detail.id)}/timeline`);
     holder.replaceChildren();
-    if (!payload.events?.length) { holder.append(element('p', 'subtle', 'Este jogo foi importado antes da leitura de anotações. Reimporte o log para gerar a linha do tempo.')); return; }
+    if (!payload.events?.length) { holder.append(element('p', 'subtle', 'This game was imported before annotations were read. Re-import the log to build the timeline.')); return; }
     let turn = null;
     payload.events.forEach((event) => {
-      if (event.turn !== turn) { turn = event.turn; holder.append(element('h4', null, `Turno ${turn}`)); }
+      if (event.turn !== turn) { turn = event.turn; holder.append(element('h4', null, `Turn ${turn}`)); }
       const row = element('button', `timeline-row${event.is_self ? ' self' : ''}`, event.text);
       row.type = 'button';
       row.addEventListener('click', () => changeFrame(event.frame_index));
@@ -445,8 +465,15 @@ function inspectCard(id) {
   const target = $('#card-inspector'); if (!target) return;
   target.replaceChildren(); const card = state.cards[id];
   target.append(element('h4', null, cardName(id)));
-  if (!card || card.resolved === false) { target.append(element('p', 'gap', `ID #${id} não resolvido pelo catálogo local.`)); return; }
-  target.append(element('p', 'mana-line', `${card.mana_cost || '—'} · valor ${card.mana_value ?? '—'}`), element('p', 'type-line', card.type_line || 'Tipo não informado'), element('p', 'rules-text', card.text || 'Texto não disponível no catálogo local.'));
+  if (!card || card.resolved === false) { target.append(element('p', 'gap', `Id #${id} was not resolved by the local catalogue.`)); return; }
+  if (artEnabled()) {
+    const art = document.createElement('img');
+    art.className = 'card-art'; art.loading = 'lazy'; art.alt = '';
+    art.src = `/art/${encodeURIComponent(id)}.jpg`;
+    art.addEventListener('error', () => art.remove());
+    target.append(art);
+  }
+  target.append(element('p', 'mana-line', `${card.mana_cost || '—'} · MV ${card.mana_value ?? '—'}`), element('p', 'type-line', card.type_line || 'Type unknown'), element('p', 'rules-text', card.text || 'No rules text in the local catalogue.'));
   const hasPower = card.power !== null && card.power !== undefined && String(card.power).trim() !== '';
   const hasToughness = card.toughness !== null && card.toughness !== undefined && String(card.toughness).trim() !== '';
   if (hasPower || hasToughness) target.append(element('p', null, `${hasPower ? card.power : '?'}/${hasToughness ? card.toughness : '?'}`));
@@ -455,18 +482,19 @@ function inspectCard(id) {
 function changeFrame(position) { state.framePosition = position; renderReplay(); }
 
 async function openGame(id) {
-  setMessage('Carregando replay…');
+  setMessage('Loading replay…');
   try {
     state.detail = await request(`/api/games/${encodeURIComponent(id)}`);
     state.frameCache = new Map();
     state.framePosition = firstDecisionPosition(state.detail.frame_index ?? []);
     Object.assign(state.cards, state.detail.cards ?? {});
+    warmArt(Object.keys(state.detail.cards ?? {}).map(Number));
     $('#replay-section').hidden = false;
     await renderReplay();
     $('#replay-section').scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
     setMessage('');
     renderTraining();
-  } catch (error) { setMessage(`Não foi possível abrir o replay: ${error.message}`, 'error'); }
+  } catch (error) { setMessage(`Could not open the replay: ${error.message}`, 'error'); }
 }
 
 async function saveNote(event, frameIndex, input) {
@@ -475,18 +503,82 @@ async function saveNote(event, frameIndex, input) {
     await postJson('/api/notes', { game_id: state.detail.id, frame_index: frameIndex, body, tags: [] });
     input.value = '';
     state.detail = await request(`/api/games/${encodeURIComponent(state.detail.id)}`);
-    await renderReplay(); await loadNotes(); setMessage('Nota manual salva.');
-  } catch (error) { setMessage(`A nota não foi salva: ${error.message}`, 'error'); }
+    await renderReplay(); await loadNotes(); setMessage('Note saved.');
+  } catch (error) { setMessage(`The note was not saved: ${error.message}`, 'error'); }
 }
 
 async function copyContext(index) {
   try {
     const response = await request(contextEndpoint(state.detail.id, index));
-    if (!response.eligible) throw new Error('O servidor informou que este quadro não é elegível.');
+    if (!response.eligible) throw new Error('The server reports this frame is not eligible.');
     const text = response.text || JSON.stringify(response.context ?? {}, null, 2);
     await navigator.clipboard.writeText(text);
-    setMessage('Contexto sanitizado copiado.');
-  } catch (error) { setMessage(`O contexto não foi copiado: ${error.message}`, 'error'); }
+    setMessage('Sanitised context copied.');
+  } catch (error) { setMessage(`The context was not copied: ${error.message}`, 'error'); }
+}
+
+async function warmArt(cardIds) {
+  if (!artEnabled() || !cardIds?.length) return;
+  try { await postJson('/api/art/fetch', { card_ids: cardIds.slice(0, 200) }); }
+  catch { /* Art is decoration: a failure must not disturb the review. */ }
+}
+
+// ---------------------------------------------------------------- leitura por IA
+
+const COACH_MODES = [
+  ['explain', 'Explain the numbers'],
+  ['ask', 'Ask me questions'],
+  ['alternatives', 'Comment on alternatives'],
+];
+
+function renderCoachTab(target, frame) {
+  const coach = state.summary?.coach;
+  target.append(element('p', 'eyebrow', 'AI READING'));
+  if (!coach?.ready) {
+    target.append(element('p', 'subtle', coach?.package === false
+      ? `Missing package. Run: ${coach?.install}`
+      : 'No Anthropic key stored. Open Settings to paste yours.'));
+    const link = element('button', 'text-button', 'Open Settings'); link.type = 'button';
+    link.addEventListener('click', () => setView('settings'));
+    target.append(link);
+    return;
+  }
+  if (frame.quality !== 'complete') {
+    target.append(element('p', 'gap', 'This stretch has a gap: the context is not eligible for a reading.'));
+    return;
+  }
+  const picker = element('div', 'coach-modes');
+  COACH_MODES.forEach(([key, label]) => {
+    const button = element('button', `sidebar-tab${state.coachMode === key ? ' active' : ''}`, label);
+    button.type = 'button';
+    button.addEventListener('click', () => { state.coachMode = key; renderSidebar(frame); });
+    picker.append(button);
+  });
+  target.append(picker);
+  const run = element('button', 'button primary', state.coachBusy ? 'Reading…' : 'Ask for a reading');
+  run.type = 'button'; run.disabled = state.coachBusy;
+  run.addEventListener('click', () => askCoach({ kind: 'position', game_id: state.detail.id, index: frame.index }, frame));
+  target.append(run);
+  target.append(element('small', null, `Model ${coach.model}. The app sends only the sanitised position and the numbers it computed itself.`));
+  if (state.coachAnswer) target.append(coachAnswerBlock(state.coachAnswer));
+}
+
+function coachAnswerBlock(answer) {
+  const box = element('article', 'coach-answer');
+  if (answer.error) { box.append(element('p', 'gap', answer.error)); return box; }
+  answer.text.split(/\n{2,}/).forEach((paragraph) => box.append(element('p', null, paragraph.trim())));
+  box.append(element('small', null, `${answer.disclaimer} · ${answer.usage.input}+${answer.usage.output} tokens · US$ ${answer.cost_usd.toFixed(4)}`));
+  return box;
+}
+
+async function askCoach(payload, frame) {
+  state.coachBusy = true; state.coachAnswer = null;
+  if (frame) renderSidebar(frame); else renderSettings();
+  try {
+    state.coachAnswer = await postJson('/api/coach/review', { mode: state.coachMode, ...payload });
+  } catch (error) { state.coachAnswer = { error: error.message }; }
+  state.coachBusy = false;
+  if (frame) renderSidebar(frame); else showDeck(payload.deck_id);
 }
 
 // ---------------------------------------------------------------- decks
@@ -497,8 +589,8 @@ function renderDecks() {
   const decks = state.summary?.decks ?? [];
   const select = $('#experiment-deck'); select.replaceChildren();
   if (!decks.length) {
-    empty(list, 'Nenhum deck observado.', 'Importe uma partida que registre a composição do deck.');
-    empty(detail, 'Sem composição para comparar.', 'O catálogo será consultado somente para cartas registradas.');
+    empty(list, 'No deck observed.', 'Import a match that records the deck composition.');
+    empty(detail, 'No composition to compare.', 'The catalogue is only consulted for recorded cards.');
     return;
   }
   decks.forEach((deckEntry, index) => {
@@ -506,8 +598,8 @@ function renderDecks() {
     const option = element('option', null, deckEntry.label || deckEntry.id); option.value = deckEntry.id; select.append(option);
     const button = element('button', `deck-version ${index === 0 ? 'active' : ''}`, '');
     button.type = 'button';
-    button.append(element('strong', null, deckEntry.label || `Versão ${deckEntry.id}`),
-      element('span', null, `${deckEntry.main_count ?? 0} principais · ${scoped.games} jogos ${state.mode === 'ambos' ? '' : state.mode}`),
+    button.append(element('strong', null, deckEntry.label || `Version ${deckEntry.id}`),
+      element('span', null, `${deckEntry.main_count ?? 0} main · ${scoped.games} ${state.mode === 'both' ? '' : state.mode} games`),
       element('small', null, percent(scoped.win_rate)));
     button.addEventListener('click', () => { list.querySelectorAll('.deck-version').forEach((item) => item.classList.remove('active')); button.classList.add('active'); showDeck(deckEntry.id); });
     list.append(button);
@@ -516,7 +608,7 @@ function renderDecks() {
 }
 
 function deckModeMetrics(entry) {
-  if (state.mode === 'ambos') return { games: entry.game_count ?? 0, wins: entry.wins ?? 0, losses: entry.losses ?? 0, win_rate: entry.win_rate ?? null };
+  if (state.mode === 'both') return { games: entry.game_count ?? 0, wins: entry.wins ?? 0, losses: entry.losses ?? 0, win_rate: entry.win_rate ?? null };
   const reported = entry.by_mode?.[state.mode];
   if (reported && typeof reported === 'object') return { games: reported.games ?? 0, wins: reported.wins ?? 0, losses: reported.losses ?? 0, win_rate: reported.win_rate ?? null };
   const scoped = state.games.filter((game) => game.deck_id === entry.id && game.mode === state.mode);
@@ -528,67 +620,70 @@ function deckModeMetrics(entry) {
 
 async function showDeck(deckId) {
   const target = $('#deck-detail');
-  target.replaceChildren(element('p', 'subtle', 'Analisando a composição…'));
+  target.replaceChildren(element('p', 'subtle', 'Analysing the composition…'));
   let report;
   try { report = await request(`/api/decks/${encodeURIComponent(deckId)}`); }
   catch (error) { target.replaceChildren(element('p', 'gap', error.message)); return; }
   state.deckReport = report;
   Object.assign(state.deckCards, report.cards ?? {});
   target.replaceChildren();
-  target.append(element('p', 'eyebrow', 'COMPOSIÇÃO OBSERVADA'), element('h2', null, report.label || `Versão ${report.deck_id}`));
-  target.append(element('p', 'subtle', `${report.wins} vitórias · ${report.losses} derrotas em ${report.games} jogos. ${intervalText(report.interval)}.`));
+  target.append(element('p', 'eyebrow', 'OBSERVED COMPOSITION'), element('h2', null, report.label || `Version ${report.deck_id}`));
+  target.append(element('p', 'subtle', `${report.wins} wins · ${report.losses} losses over ${report.games} games. ${intervalText(report.interval)}.`));
   target.append(bindDeckControl(report));
   target.append(curveBlock(report));
   target.append(manaBaseBlock(report));
   target.append(wildcardBlock(report));
   target.append(cardStatsBlock(report.card_stats));
+  target.append(deckCoachBlock(report));
+  target.append(exportBlock(report));
   target.append(deckSection('Principal', report.deck?.main ?? []), deckSection('Sideboard', report.deck?.sideboard ?? []));
+  warmArt(Object.keys(report.cards ?? {}).map(Number));
 }
 
 function bindDeckControl(report) {
   const box = element('div', 'bind-deck');
   const named = state.summary?.named_decks ?? [];
-  box.append(element('h4', null, 'Nome do deck'));
-  if (!named.length) { box.append(element('p', 'subtle', 'Nenhum deck nomeado foi lido do log ainda.')); return box; }
+  box.append(element('h4', null, 'Deck name'));
+  if (!named.length) { box.append(element('p', 'subtle', 'No named deck has been read from the log yet.')); return box; }
   const select = document.createElement('select');
-  select.append(element('option', null, 'Escolher deck salvo no Arena…'));
-  named.forEach((deck) => { const option = element('option', null, `${deck.name} (${deck.format || 'formato não informado'})`); option.value = deck.uid; select.append(option); });
-  const apply = element('button', 'button secondary', 'Vincular'); apply.type = 'button';
+  select.append(element('option', null, 'Pick a deck saved in Arena…'));
+  named.forEach((deck) => { const option = element('option', null, `${deck.name} (${deck.format || 'format unknown'})`); option.value = deck.uid; select.append(option); });
+  const apply = element('button', 'button secondary', 'Link'); apply.type = 'button';
   apply.addEventListener('click', async () => {
     if (!select.value) return;
-    try { await postJson('/api/decks/bind', { deck_id: report.deck_id, deck_uid: select.value }); setMessage('Composição vinculada ao deck salvo.'); await refresh(); renderDecks(); }
-    catch (error) { setMessage(`O vínculo falhou: ${error.message}`, 'error'); }
+    try { await postJson('/api/decks/bind', { deck_id: report.deck_id, deck_uid: select.value }); setMessage('Composition linked to the saved deck.'); await refresh(); renderDecks(); }
+    catch (error) { setMessage(`Linking failed: ${error.message}`, 'error'); }
   });
   box.append(select, apply);
-  box.append(element('small', null, 'O log não liga a lista jogada ao deck salvo; o vínculo é sua escolha e fica registrado.'));
+  box.append(element('small', null, 'The log never links the list played to the saved deck; this link is your call and it is remembered.'));
   return box;
 }
 
 function curveBlock(report) {
   const curve = element('div', 'mana-curve');
-  curve.append(element('h3', null, 'Curva de mana · principal sem terras'));
-  curve.append(element('small', null, `${report.lands} terras · valor médio ${report.average_mana_value ?? '—'}${report.lands_recommended ? ` · regressão publicada sugere ${report.lands_recommended}` : ''}`));
-  if (!report.curve) curve.append(element('p', 'gap', `Curva indisponível: ${report.unresolved.length} carta(s) do principal não foram resolvidas no catálogo local.`));
+  curve.append(element('h3', null, 'Mana curve · main deck, lands excluded'));
+  curve.append(element('small', null, `${report.lands} lands · average MV ${report.average_mana_value ?? '—'}${report.lands_recommended ? ` · published regression suggests ${report.lands_recommended}` : ''}`));
+  if (!report.curve) curve.append(element('p', 'gap', `No curve: ${report.unresolved.length} main-deck card(s) were not resolved by the local catalogue.`));
   else Object.entries(report.curve).forEach(([mana, quantity]) => curve.append(element('span', 'curve-bar', `${mana}: ${quantity}`)));
   return curve;
 }
 
 function manaBaseBlock(report) {
   const box = element('section', 'deck-section');
-  box.append(element('h3', null, 'Base de mana'));
+  box.append(element('h3', null, 'Mana base'));
   const requirements = report.colour_requirements ?? [];
   if (!requirements.length) {
-    box.append(element('p', 'subtle', 'Nenhuma cor obrigatória nesta lista — só custos genéricos, híbridos ou phyrexianos.'));
-    if (report.flexible_costs?.length) box.append(element('small', null, `Custos flexíveis: ${report.flexible_costs.join(', ')}.`));
+    box.append(element('p', 'subtle', 'No colour is mandatory in this list — only generic, hybrid or Phyrexian costs.'));
+    if (report.flexible_costs?.length) box.append(element('small', null, `Flexible costs: ${report.flexible_costs.join(', ')}.`));
     return box;
   }
   requirements.forEach((item) => {
     const row = element('div', `deck-card${item.shortfall ? ' shortfall' : ''}`);
-    row.append(element('strong', null, `${item.colour} ×${item.pips} no turno ${item.turn}: ${item.have} de ${item.needed} fontes`),
-      element('span', null, item.shortfall ? `faltam ${item.shortfall} — exigência puxada por ${item.driver}` : `atende — exigência puxada por ${item.driver}`));
+    row.append(element('strong', null, `${item.colour} ×${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources`),
+      element('span', null, item.shortfall ? `${item.shortfall} short — demand set by ${item.driver}` : `met — demand set by ${item.driver}`));
     box.append(row);
   });
-  if (report.flexible_costs?.length) box.append(element('small', null, `Fora da conta, porque a cor não é obrigatória: ${report.flexible_costs.join(', ')} (mana híbrido ou phyrexiano).`));
+  if (report.flexible_costs?.length) box.append(element('small', null, `Left out because the colour is not mandatory: ${report.flexible_costs.join(', ')} (hybrid or Phyrexian mana).`));
   box.append(element('small', null, report.karsten_citation));
   box.append(element('small', null, report.bo1_caveat));
   return box;
@@ -596,41 +691,77 @@ function manaBaseBlock(report) {
 
 function wildcardBlock(report) {
   const box = element('section', 'deck-section');
-  box.append(element('h3', null, 'Custo em curingas'));
+  box.append(element('h3', null, 'Wildcard cost'));
   const cost = report.wildcards?.cost ?? {};
   const owned = state.summary?.inventory ?? {};
-  const map = { common: ['comuns', 'WildCardCommons'], uncommon: ['incomuns', 'WildCardUnCommons'], rare: ['raras', 'WildCardRares'], mythic: ['míticas', 'WildCardMythics'] };
+  const map = { common: ['commons', 'WildCardCommons'], uncommon: ['uncommons', 'WildCardUnCommons'], rare: ['rares', 'WildCardRares'], mythic: ['mythics', 'WildCardMythics'] };
   Object.entries(map).forEach(([key, [label, inventoryKey]]) => {
     const row = element('div', 'deck-card');
     row.append(element('strong', null, `${cost[key] ?? 0} ${label}`),
-      element('span', null, owned[inventoryKey] !== undefined ? `você tem ${owned[inventoryKey]}` : 'estoque não lido'));
+      element('span', null, owned[inventoryKey] !== undefined ? `you hold ${owned[inventoryKey]}` : 'stock not read'));
     box.append(row);
   });
-  box.append(element('small', null, 'Custo da lista inteira. O Arena parou de publicar a coleção no log, então o app não sabe quais cópias você já possui.'));
+  box.append(element('small', null, 'Cost of the whole list. Arena stopped publishing the collection in the log, so the app cannot know which copies you already own.'));
   return box;
 }
 
 function cardStatsBlock(stats) {
   const box = element('section', 'deck-section');
-  box.append(element('h3', null, 'Cartas na mão × resultado'));
-  if (!stats?.rows?.length) { box.append(element('p', 'subtle', 'Sem partidas concluídas com mão registrada nesta composição.')); return box; }
+  box.append(element('h3', null, 'Cards in hand vs result'));
+  if (!stats?.rows?.length) { box.append(element('p', 'subtle', 'No finished game with a recorded hand for this composition.')); return box; }
   stats.rows.slice(0, 20).forEach((row) => {
     const line = element('div', 'deck-card');
     line.append(element('strong', null, row.name), element('span', null, intervalText(row.interval)));
     box.append(line);
   });
-  box.append(element('small', null, `${stats.note} Separar 55% de 50% exigiria cerca de ${stats.games_to_detect_five_points} partidas por braço.`));
+  box.append(element('small', null, `${stats.note} Telling 55% from 50% would take about ${stats.games_to_detect_five_points} games per arm.`));
+  return box;
+}
+
+function exportBlock(report) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'Take it back to Arena'));
+  const copy = element('button', 'button secondary', 'Copy list in Arena format');
+  copy.type = 'button';
+  copy.addEventListener('click', async () => {
+    try {
+      const exported = await request(`/api/decks/${encodeURIComponent(report.deck_id)}/export`);
+      await navigator.clipboard.writeText(exported.text);
+      setMessage(exported.unresolved?.length
+        ? `List copied. ${exported.unresolved.length} card(s) the catalogue could not name went out as comments.`
+        : 'List copied. In Arena: Decks → Import.');
+    } catch (error) { setMessage(`The list was not copied: ${error.message}`, 'error'); }
+  });
+  box.append(copy);
+  box.append(element('small', null, 'Pastes straight into the Arena importer: quantity, English name, set and number.'));
+  return box;
+}
+
+function deckCoachBlock(report) {
+  const box = element('section', 'deck-section');
+  box.append(element('h3', null, 'AI reading'));
+  const coach = state.summary?.coach;
+  if (!coach?.ready) {
+    box.append(element('p', 'subtle', 'Add your key in Settings to ask for a reading of this list.'));
+    return box;
+  }
+  const run = element('button', 'button secondary', state.coachBusy ? 'Reading…' : 'Suggest swaps from the numbers');
+  run.type = 'button'; run.disabled = state.coachBusy;
+  run.addEventListener('click', () => { state.coachMode = 'deck'; askCoach({ kind: 'deck', deck_id: report.deck_id }, null); });
+  box.append(run);
+  if (state.coachAnswer) box.append(coachAnswerBlock(state.coachAnswer));
   return box;
 }
 
 function deckSection(title, entries) {
   const section = element('section', 'deck-section');
   section.append(element('h3', null, title));
-  if (!entries.length) section.append(element('p', 'subtle', 'Nenhuma carta registrada.'));
+  if (!entries.length) section.append(element('p', 'subtle', 'No card recorded.'));
   entries.forEach(({ id, quantity }) => {
     const card = state.deckCards[id];
     const row = element('div', 'deck-card');
-    row.append(element('strong', null, `${quantity}× ${cardName(id)}`), element('span', null, card?.type_line || `ID #${id} não resolvido`));
+    applyArt(row, id);
+    row.append(element('strong', null, `${quantity}× ${cardName(id)}`), element('span', null, card?.type_line || `Id #${id} unresolved`));
     section.append(row);
   });
   return section;
@@ -640,24 +771,24 @@ async function saveExperiment(event) {
   event.preventDefault();
   const formElement = event.currentTarget;
   const payload = Object.fromEntries(new FormData(formElement).entries());
-  payload.changes = { description: payload.changes || 'Sem alteração detalhada.' };
+  payload.changes = { description: payload.changes || 'No detail given.' };
   payload.status = 'planned';
-  try { await postJson('/api/experiments', payload); formElement.reset(); await loadExperiments(); setMessage('Hipótese registrada como experimento do usuário.'); }
-  catch (error) { setMessage(`A hipótese não foi registrada: ${error.message}`, 'error'); }
+  try { await postJson('/api/experiments', payload); formElement.reset(); await loadExperiments(); setMessage('Hypothesis recorded as your own experiment.'); }
+  catch (error) { setMessage(`The hypothesis was not recorded: ${error.message}`, 'error'); }
 }
 
 async function loadExperiments() {
   try { const payload = await request('/api/experiments'); state.experiments = payload.experiments ?? []; }
-  catch (error) { state.experiments = []; setMessage(`Os experimentos não carregaram: ${error.message}`, 'error'); }
+  catch (error) { state.experiments = []; setMessage(`Experiments did not load: ${error.message}`, 'error'); }
   renderExperiments();
 }
 
 function renderExperiments() {
   const target = $('#experiments'); target.replaceChildren();
-  if (!state.experiments.length) { target.append(element('p', 'subtle', 'Nenhuma hipótese registrada.')); return; }
+  if (!state.experiments.length) { target.append(element('p', 'subtle', 'No hypothesis recorded.')); return; }
   state.experiments.forEach((experiment) => {
     const item = element('article', 'experiment');
-    item.append(element('strong', null, experiment.title || 'Hipótese sem título'), element('p', null, experiment.hypothesis || ''), element('small', null, `Deck ${experiment.deck_id ?? '—'} · ${experiment.status ?? 'planned'}`));
+    item.append(element('strong', null, experiment.title || 'Untitled hypothesis'), element('p', null, experiment.hypothesis || ''), element('small', null, `Deck ${experiment.deck_id ?? '—'} · ${experiment.status ?? 'planned'}`));
     target.append(item);
   });
 }
@@ -673,44 +804,131 @@ function statRow(label, metrics) {
 function renderStats() {
   const target = $('#stats-body'); target.replaceChildren();
   const summary = state.summary;
-  if (!summary) { empty(target, 'Sem dados.', 'Importe um log para calcular estatísticas.'); return; }
+  if (!summary) { empty(target, 'No data.', 'Import a log to compute statistics.'); return; }
   const rank = summary.rank;
   if (rank?.constructedClass) {
     const box = element('section', 'deck-section');
-    box.append(element('h3', null, 'Rank construído'));
-    box.append(element('p', null, `${rank.constructedClass} ${rank.constructedLevel ?? ''} · temporada ${rank.constructedSeasonOrdinal ?? '—'} · ${rank.constructedMatchesWon ?? 0} vitórias e ${rank.constructedMatchesLost ?? 0} derrotas registradas pelo cliente`));
+    box.append(element('h3', null, 'Constructed rank'));
+    box.append(element('p', null, `${rank.constructedClass} ${rank.constructedLevel ?? ''} · season ${rank.constructedSeasonOrdinal ?? '—'} · ${rank.constructedMatchesWon ?? 0} wins and ${rank.constructedMatchesLost ?? 0} losses as recorded by the client`));
     target.append(box);
   }
   const start = element('section', 'deck-section');
-  start.append(element('h3', null, 'Quem começou'));
-  start.append(statRow('Jogando primeiro', summary.by_start?.on_play), statRow('Jogando depois', summary.by_start?.on_draw));
-  if (summary.by_start?.unknown) start.append(element('small', null, `${summary.by_start.unknown} jogo(s) sem a ordem registrada.`));
+  start.append(element('h3', null, 'Who went first'));
+  start.append(statRow('On the play', summary.by_start?.on_play), statRow('On the draw', summary.by_start?.on_draw));
+  if (summary.by_start?.unknown) start.append(element('small', null, `${summary.by_start.unknown} game(s) with no recorded order.`));
   target.append(start);
 
   const mull = element('section', 'deck-section');
   mull.append(element('h3', null, 'Mulligans'));
   const kept = state.games.filter((game) => game.mulligans_self === 0).length;
   const mulled = state.games.filter((game) => (game.mulligans_self ?? 0) > 0).length;
-  mull.append(element('p', null, `${kept} mão(s) mantidas de sete · ${mulled} jogo(s) com mulligan.`));
+  mull.append(element('p', null, `${kept} hand(s) kept at seven · ${mulled} game(s) with a mulligan.`));
   target.append(mull);
 
   const modes = element('section', 'deck-section');
-  modes.append(element('h3', null, 'Por modo'));
-  modes.append(statRow('BO1', summary.by_mode?.BO1), statRow('BO3 (jogos)', summary.by_mode?.BO3));
+  modes.append(element('h3', null, 'By mode'));
+  modes.append(statRow('BO1', summary.by_mode?.BO1), statRow('BO3 (games)', summary.by_mode?.BO3));
   target.append(modes);
 
   const health = element('section', 'deck-section');
-  health.append(element('h3', null, 'Base local'));
-  health.append(element('p', null, `${summary.imports ?? 0} importação(ões) · banco com ${bytesText(summary.database_bytes)} · ${summary.named_decks?.length ?? 0} deck(s) nomeados lidos do log.`));
-  if (summary.capture) health.append(element('p', 'subtle', summary.capture.running ? `Acompanhamento ativo: ${bytesText(summary.capture.bytes_read)} lidos em ${summary.capture.sessions} sessão(ões). Logs detalhados: ${summary.capture.detailed_logs === false ? 'DESLIGADOS no Arena' : summary.capture.detailed_logs ? 'ligados' : 'não determinado'}.` : 'Acompanhamento parado. O Arena apaga o Player.log a cada reinício do cliente: sem acompanhamento, a sessão se perde.'));
+  health.append(element('h3', null, 'Local store'));
+  health.append(element('p', null, `${summary.imports ?? 0} import(s) · database ${bytesText(summary.database_bytes)} · ${summary.named_decks?.length ?? 0} named deck(s) read from the log.`));
+  if (summary.capture) health.append(element('p', 'subtle', summary.capture.running ? `Following: ${bytesText(summary.capture.bytes_read)} read across ${summary.capture.sessions} session(s). Detailed logs: ${summary.capture.detailed_logs === false ? 'OFF in Arena' : summary.capture.detailed_logs ? 'on' : 'undetermined'}.` : 'Not following. Arena wipes Player.log every time the client starts: without the follower, the session is lost.'));
   target.append(health);
 
   if (summary.warnings?.length) {
     const warn = element('section', 'deck-section');
-    warn.append(element('h3', null, 'Avisos da importação'));
+    warn.append(element('h3', null, 'Import warnings'));
     summary.warnings.forEach((warning) => warn.append(element('p', 'gap', warning)));
     target.append(warn);
   }
+}
+
+// ---------------------------------------------------------------- ajustes
+
+function renderSettings() {
+  const target = $('#settings-body'); target.replaceChildren();
+  const summary = state.summary;
+  if (!summary) { empty(target, 'No data.', 'Import a log first.'); return; }
+
+  const art = element('section', 'deck-section');
+  art.append(element('h3', null, 'Card art'));
+  art.append(element('p', 'subtle', 'Fetches art from Scryfall once per card and keeps it on this PC. All that leaves is a set code and a collector number — never a match, a deck or an account.'));
+  const toggle = element('button', `button ${summary.art?.enabled ? 'primary' : 'secondary'}`,
+    summary.art?.enabled ? 'Card art on — switch off' : 'Switch card art on');
+  toggle.type = 'button';
+  toggle.addEventListener('click', async () => {
+    try { await postJson('/api/art', { enabled: !summary.art?.enabled }); await refresh(); renderSettings(); }
+    catch (error) { setMessage(`Could not change it: ${error.message}`, 'error'); }
+  });
+  art.append(toggle);
+  art.append(element('p', null, `${summary.art?.cached ?? 0} image(s) cached · ${bytesText(summary.art?.bytes)} · ${summary.art?.without_image ?? 0} card(s) with no paper printing.`));
+  art.append(element('small', null, summary.art_credit || ''));
+  target.append(art);
+
+  const ai = element('section', 'deck-section');
+  ai.append(element('h3', null, 'AI reading'));
+  const coach = summary.coach ?? {};
+  ai.append(element('p', 'subtle', `The app computes the numbers and ${coach.model} reads them. It is instructed not to recompute, not to invent card text, and never to call a play correct.`));
+  if (!coach.package) ai.append(element('p', 'gap', `Missing package. Run in a terminal: ${coach.install}`));
+  const form = document.createElement('form'); form.className = 'note-form';
+  const field = document.createElement('input');
+  field.type = 'password'; field.name = 'key'; field.placeholder = coach.key ? `key stored (${coach.key_hint})` : 'sk-ant-...';
+  field.autocomplete = 'off'; field.maxLength = 200;
+  const save = element('button', 'button primary', 'Save key'); save.type = 'submit';
+  form.append(element('label', null, 'Anthropic API key'), field, save);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try { await postJson('/api/coach/key', { key: field.value }); field.value = ''; await refresh(); renderSettings(); setMessage('Key stored, encrypted for this Windows account.'); }
+    catch (error) { setMessage(`The key was not stored: ${error.message}`, 'error'); }
+  });
+  ai.append(form);
+  if (coach.key) {
+    const forget = element('button', 'text-button', 'Forget the key'); forget.type = 'button';
+    forget.addEventListener('click', async () => {
+      try { await postJson('/api/coach/key', { key: '' }); await refresh(); renderSettings(); setMessage('Key deleted.'); }
+      catch (error) { setMessage(error.message, 'error'); }
+    });
+    ai.append(forget);
+  }
+  ai.append(element('small', null, 'The key is encrypted with Windows DPAPI and lives in %LOCALAPPDATA%/mtga-coach. It never reaches the database or git.'));
+  target.append(ai);
+
+  const list = element('section', 'deck-section');
+  list.append(element('h3', null, 'Analyse a standalone list'));
+  list.append(element('p', 'subtle', 'Paste a list in Arena format to see curve, mana base and wildcard cost before you build it. Nothing is stored.'));
+  const paste = document.createElement('textarea');
+  paste.rows = 6; paste.placeholder = 'Deck\n4 Thoughtseize (LRW) 145\n...';
+  const analyse = element('button', 'button secondary', 'Analyse'); analyse.type = 'button';
+  const answer = element('div', 'list-analysis');
+  analyse.addEventListener('click', async () => {
+    answer.replaceChildren(element('p', 'subtle', 'Reading the list…'));
+    try { renderListAnalysis(answer, await postJson('/api/decks/analyze', { text: paste.value })); }
+    catch (error) { answer.replaceChildren(element('p', 'gap', error.message)); }
+  });
+  list.append(paste, analyse, answer);
+  target.append(list);
+}
+
+function renderListAnalysis(target, payload) {
+  target.replaceChildren();
+  target.append(element('p', null, `${payload.main_count} cards in the main deck · ${payload.deck?.sideboard?.length ?? 0} sideboard entries.`));
+  (payload.problems ?? []).forEach((problem) => target.append(element('p', 'gap', `line ${problem.line}: ${problem.reason}`)));
+  const report = payload.analysis;
+  if (!report) { target.append(element('p', 'subtle', payload.note)); return; }
+  target.append(element('p', null, `${report.lands} lands · average MV ${report.average_mana_value ?? '—'} · published regression suggests ${report.lands_recommended ?? '—'}.`));
+  if (report.curve) {
+    const curve = element('div', 'mana-curve');
+    Object.entries(report.curve).forEach(([mana, quantity]) => curve.append(element('span', 'curve-bar', `${mana}: ${quantity}`)));
+    target.append(curve);
+  }
+  (report.colour_requirements ?? []).forEach((item) => {
+    target.append(element('p', item.shortfall ? 'gap' : 'subtle',
+      `${item.colour} ×${item.pips} by turn ${item.turn}: ${item.have} of ${item.needed} sources${item.shortfall ? ` — ${item.shortfall} short (${item.driver})` : ' — met'}`));
+  });
+  const cost = report.wildcards?.cost ?? {};
+  target.append(element('p', null, `Wildcards: ${cost.common ?? 0} common · ${cost.uncommon ?? 0} uncommon · ${cost.rare ?? 0} rare · ${cost.mythic ?? 0} mythic.`));
+  target.append(element('small', null, payload.note));
 }
 
 // ---------------------------------------------------------------- training
@@ -723,14 +941,14 @@ async function loadNotes() {
 
 function renderTraining() {
   const target = $('#training-notes'); target.replaceChildren();
-  if (!state.notes.length) return empty(target, 'Nenhuma nota registrada.', 'Abra uma partida, escolha uma posição e registre a reflexão na barra lateral do replay.');
+  if (!state.notes.length) return empty(target, 'No note recorded.', 'Open a game, pick a position, and write the note in the replay sidebar.');
   const byGame = new Map(state.games.map((game) => [game.id, game]));
   state.notes.slice().reverse().forEach((note) => {
     const game = byGame.get(note.game_id);
     const item = element('article', 'training-note');
-    const open = element('button', 'text-button', `${game ? `${game.deck_label} · ${resultLabel(game.result)}` : note.game_id} · quadro ${note.frame_index ?? '—'}`);
+    const open = element('button', 'text-button', `${game ? `${game.deck_label} · ${resultLabel(game.result)}` : note.game_id} · frame ${note.frame_index ?? '—'}`);
     open.type = 'button';
-    open.addEventListener('click', async () => { await openGame(note.game_id); if (note.frame_index !== null) changeFrame(note.frame_index); setView('partidas'); });
+    open.addEventListener('click', async () => { await openGame(note.game_id); if (note.frame_index !== null) changeFrame(note.frame_index); setView('matches'); });
     item.append(open, element('p', null, note.body), element('small', null, listText(note.tags)));
     target.append(item);
   });
@@ -739,42 +957,43 @@ function renderTraining() {
 // ---------------------------------------------------------------- shell
 
 async function importConfigured() {
-  setMessage('Importando o arquivo configurado…');
+  setMessage('Importing the configured file…');
   try {
     const result = await postJson('/api/import', { source: 'configured' });
-    setMessage(result.created ? `Importado: ${result.games} jogo(s) em ${result.record_count} registros.` : 'Este arquivo já tinha sido importado.');
+    setMessage(result.created ? `Imported: ${result.games} game(s) from ${result.record_count} records.` : 'This file had already been imported.');
     await refresh();
-  } catch (error) { setMessage(`A importação falhou: ${error.message}`, 'error'); }
+  } catch (error) { setMessage(`The import failed: ${error.message}`, 'error'); }
 }
 
 async function uploadLog(event) {
   const file = event.target.files?.[0]; if (!file) return;
-  setMessage(`Enviando ${file.name}…`);
+  setMessage(`Uploading ${file.name}…`);
   try {
     const result = await request('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: await file.arrayBuffer() });
-    setMessage(result.created ? `Importado: ${result.games} jogo(s).` : 'Este arquivo já tinha sido importado.');
+    setMessage(result.created ? `Imported: ${result.games} game(s).` : 'This file had already been imported.');
     await refresh();
-  } catch (error) { setMessage(`O arquivo não foi importado: ${error.message}`, 'error'); }
+  } catch (error) { setMessage(`The file was not imported: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 }
 
 async function toggleCapture() {
   const running = Boolean(state.summary?.capture?.running);
-  setMessage(running ? 'Parando o acompanhamento…' : 'Iniciando o acompanhamento do log…');
+  setMessage(running ? 'Stopping the follower…' : 'Starting the log follower…');
   try {
     const capture = await postJson(running ? '/api/capture/stop' : '/api/capture/start', {});
     renderCaptureLine(capture);
-    setMessage(capture.running ? 'Acompanhando o Player.log. Deixe o app aberto enquanto joga.' : 'Acompanhamento parado.');
+    setMessage(capture.running ? 'Following Player.log. Leave the app open while you play.' : 'Follower stopped.');
     await refresh();
-  } catch (error) { setMessage(`O acompanhamento falhou: ${error.message}`, 'error'); }
+  } catch (error) { setMessage(`The follower failed: ${error.message}`, 'error'); }
 }
 
 function setView(name) {
   document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
   document.querySelectorAll('.nav-item').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
   if (name === 'decks') { renderDecks(); loadExperiments(); }
-  if (name === 'estatisticas') renderStats();
-  if (name === 'treino') loadNotes();
+  if (name === 'stats') renderStats();
+  if (name === 'settings') renderSettings();
+  if (name === 'training') loadNotes();
 }
 
 function reducedMotion() { return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
@@ -786,11 +1005,11 @@ async function refresh() {
     state.games = games.games ?? [];
     renderSummary(); renderGames();
     if ($('#view-decks').classList.contains('active')) renderDecks();
-    if ($('#view-estatisticas').classList.contains('active')) renderStats();
+    if ($('#view-stats').classList.contains('active')) renderStats();
   } catch (error) {
     state.summary = null; state.games = [];
     renderSummary(); renderGames();
-    setMessage(`Não foi possível acessar o serviço local: ${error.message}`, 'error');
+    setMessage(`Could not reach the local service: ${error.message}`, 'error');
   }
 }
 
