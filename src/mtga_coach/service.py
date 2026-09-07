@@ -660,9 +660,9 @@ class CoachService:
         state = live or self.store.latest_draft()
         if not state:
             return {"active": False, "live": False,
-                    "hint": ("No draft read yet. Turn Follow matches on before entering the "
-                             "draft: Arena writes the packs to the log as they are dealt, and "
-                             "discards the file when the client restarts."),
+                    "hint": ("Turn Follow matches on before you enter the draft: Arena writes "
+                             "each pack to the log as it is dealt, and discards the file when the "
+                             "client restarts."),
                     "diagnostics": self.watcher.draft_diagnostics() if self.watcher else None}
         pack_ids = [int(cid) for cid in state.get("pack_cards") or []]
         pool_ids = [int(cid) for cid in state.get("pool") or []]

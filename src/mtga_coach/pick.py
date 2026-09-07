@@ -106,7 +106,9 @@ def advise(pack_ids, pool_ids, ratings, cards, pick_number=None):
     chosen, weights = lane(pool_cards)
     commitment = min(1.0, len(pool_ids) / COMMITMENT_PICKS)
     rated, unrated = [], []
-    for cid in pack_ids:
+    # A pack holds one of each card; reading the same id twice would put a card against
+    # itself and report the tie as a close call.
+    for cid in dict.fromkeys(int(value) for value in pack_ids):
         card = cards.get(cid) or {}
         row = (ratings or {}).get(int(cid))
         if not row or row.get("gih_wr") is None:

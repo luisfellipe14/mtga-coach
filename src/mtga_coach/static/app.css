@@ -286,6 +286,7 @@ details.zone-chip[open] { flex-basis: 100%; }
 .drill-reveal h4 { margin-top: .8rem; }
 .drill-reveal p { line-height: 1.5; margin: .3rem 0; }
 
+.live-dot[hidden] { display: none; }
 .live-dot { background: var(--jade); border-radius: 50%; box-shadow: 0 0 8px var(--jade); display: inline-block; height: .5rem; width: .5rem; }
 .draft-head { align-items: center; display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: 1rem; }
 .live-badge { border: 1px solid rgba(255,255,255,.18); border-radius: 2px; color: var(--muted); font-size: .68rem; letter-spacing: .12em; padding: .2rem .5rem; }
