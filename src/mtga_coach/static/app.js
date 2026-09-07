@@ -1152,6 +1152,13 @@ function renderStats() {
   modes.append(statRow('BO1', summary.by_mode?.BO1), statRow('BO3 (games)', summary.by_mode?.BO3));
   target.append(modes);
 
+  const economy = element('section', 'deck-section');
+  economy.append(element('h3', null, 'Gems and gold'));
+  economy.append(element('p', 'subtle', 'Measured from the balance the log restates while you play. Draft and sealed cost currency per entry, so this is the front where a new player bleeds without noticing.'));
+  economy.append(element('div', 'wallet-body', 'Reading…'));
+  target.append(economy);
+  loadWallet();
+
   const health = element('section', 'deck-section');
   health.append(element('h3', null, 'Local store'));
   health.append(element('p', null, `${summary.imports ?? 0} import(s) · database ${bytesText(summary.database_bytes)} · ${summary.named_decks?.length ?? 0} named deck(s) read from the log.`));
@@ -1266,6 +1273,26 @@ function renderListAnalysis(target, payload) {
   const cost = report.wildcards?.cost ?? {};
   target.append(element('p', null, `Wildcards: ${cost.common ?? 0} common · ${cost.uncommon ?? 0} uncommon · ${cost.rare ?? 0} rare · ${cost.mythic ?? 0} mythic.`));
   target.append(element('small', null, payload.note));
+}
+
+async function loadWallet() {
+  const holder = document.querySelector('.wallet-body');
+  if (!holder) return;
+  try {
+    const wallet = await request('/api/wallet');
+    holder.replaceChildren();
+    if (!wallet.points?.length) { holder.append(element('p', 'subtle', wallet.note)); return; }
+    const grid = element('div', 'wildcards');
+    [['Gems', wallet.gems], ['Gold', wallet.gold]].forEach(([label, value]) => {
+      const card = element('article', `wildcard${value.change < 0 ? ' short' : ''}`);
+      card.append(element('strong', null, String(value.last ?? '—')), element('span', null, label));
+      card.append(element('small', null, `${value.change >= 0 ? '+' : ''}${value.change} since the first reading`));
+      grid.append(card);
+    });
+    holder.append(grid);
+    holder.append(element('p', null, `${wallet.readings} reading(s) · ${wallet.games_between} game(s) in between.`));
+    holder.append(element('small', null, wallet.note));
+  } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
 }
 
 // ---------------------------------------------------------------- training

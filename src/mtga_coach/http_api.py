@@ -105,6 +105,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif path == "/api/rulings":
             values = query.get("ids", [""])[0].split(",")
             self._send(HTTPStatus.OK, {"rulings": service.rulings_for([int(v) for v in values if v])})
+        elif path == "/api/wallet":
+            self._send(HTTPStatus.OK, service.wallet())
         elif path == "/api/capture":
             self._send(HTTPStatus.OK, service.capture_status())
         elif path == "/api/cards":

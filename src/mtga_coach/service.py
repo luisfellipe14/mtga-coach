@@ -600,6 +600,33 @@ class CoachService:
         return {str(card_id): items
                 for card_id, items in self.rulings.for_cards(sorted(set(card_ids))).items()}
 
+    def wallet(self) -> dict:
+        """Balance over time, measured from the log rather than modelled from payout tables.
+
+        Arena writes no itemised transactions — the Changes array is always empty — but it
+        restates the balance many times a session. What that supports is 'you gained this
+        much across these games'; what it does not support is attributing a movement to a
+        particular reward, and the interface must not pretend otherwise.
+        """
+        points = self.store.wallet()
+        if not points:
+            return {"points": [], "note": "No balance reading stored yet."}
+        first, last = points[0], points[-1]
+        games = [game for game in self.store.games() if game.get("started_at")]
+        between = [game for game in games
+                   if first["recorded_at"] <= str(game["started_at"]) <= last["recorded_at"]]
+        return {
+            "points": points, "readings": len(points),
+            "from": first["recorded_at"], "to": last["recorded_at"],
+            "gems": {"first": first["gems"], "last": last["gems"],
+                     "change": (last["gems"] or 0) - (first["gems"] or 0)},
+            "gold": {"first": first["gold"], "last": last["gold"],
+                     "change": (last["gold"] or 0) - (first["gold"] or 0)},
+            "games_between": len(between),
+            "note": ("Measured from balance readings in the log. The log records no itemised "
+                     "transactions, so a movement cannot be attributed to a specific reward."),
+        }
+
     # ------------------------------------------------------------------ deck lists
 
     def export_deck(self, deck_id: str) -> dict:

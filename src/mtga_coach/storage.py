@@ -161,6 +161,11 @@ class ReviewStore:
             CREATE TABLE IF NOT EXISTS profile (
                 key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS wallet (
+                recorded_at TEXT NOT NULL, gems INTEGER, gold INTEGER,
+                wc_common INTEGER, wc_uncommon INTEGER, wc_rare INTEGER, wc_mythic INTEGER,
+                vault INTEGER, PRIMARY KEY (recorded_at, gems, gold)
+            );
             CREATE TABLE IF NOT EXISTS captures (
                 path TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, size INTEGER NOT NULL,
                 offset INTEGER NOT NULL, session_id TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -258,6 +263,15 @@ class ReviewStore:
                 "last_played=MAX(excluded.last_played, named_decks.last_played)",
                 (deck["uid"], deck.get("name") or "", deck.get("format") or "",
                  str(deck.get("version") or ""), deck.get("last_played") or ""))
+        for point in snapshot.get("wallet") or []:
+            if not isinstance(point, dict) or not point.get("at"):
+                continue
+            self.connection.execute(
+                "INSERT OR IGNORE INTO wallet (recorded_at, gems, gold, wc_common, wc_uncommon, "
+                "wc_rare, wc_mythic, vault) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (point["at"], point.get("Gems"), point.get("Gold"), point.get("WildCardCommons"),
+                 point.get("WildCardUnCommons"), point.get("WildCardRares"),
+                 point.get("WildCardMythics"), point.get("TotalVaultProgress")))
         for key in ("rank", "inventory", "account"):
             value = snapshot.get(key)
             if value:
@@ -574,6 +588,13 @@ class ReviewStore:
                 "fingerprint=excluded.fingerprint, size=excluded.size, offset=excluded.offset, "
                 "session_id=excluded.session_id, updated_at=excluded.updated_at",
                 (path, fingerprint, size, offset, session_id, _now()))
+
+    def wallet(self) -> list[dict]:
+        with self.lock:
+            rows = self.connection.execute(
+                "SELECT recorded_at, gems, gold, wc_common, wc_uncommon, wc_rare, wc_mythic, vault "
+                "FROM wallet ORDER BY recorded_at").fetchall()
+            return [dict(row) for row in rows]
 
     def database_bytes(self) -> int:
         """Size on disk including the write-ahead log, which holds the newest rows."""

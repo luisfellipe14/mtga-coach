@@ -204,6 +204,8 @@ class LogIngestor:
         self.account = {"user_hash": None}
         self.rank = None
         self.inventory = None
+        self.wallet = []
+        self._clock = None
         self.current_match, self.current_key = None, None
         self._self_user_id = None
         self.dirty = set()
@@ -230,7 +232,7 @@ class LogIngestor:
                 "warnings": self.warnings, "games": games,
                 "matches": deepcopy(self.matches), "named_decks": deepcopy(self.named_decks),
                 "account": dict(self.account), "rank": deepcopy(self.rank),
-                "inventory": deepcopy(self.inventory)}
+                "inventory": deepcopy(self.inventory), "wallet": deepcopy(self.wallet)}
 
     def clear_dirty(self):
         self.dirty.clear()
@@ -250,6 +252,11 @@ class LogIngestor:
     # ------------------------------------------------------------------ records
 
     def _consume(self, record):
+        # Records arrive in order, so the most recent timestamp seen bounds anything that
+        # carries none of its own — an inventory reading, for one.
+        stamp = read_timestamp(record["payload"].get("timestamp")) if isinstance(record["payload"], dict) else None
+        if stamp:
+            self._clock = stamp
         for kind, value, line in events(record["payload"], record["line"]):
             handler = getattr(self, f"_on_{kind}", None)
             if handler is not None:
@@ -281,6 +288,12 @@ class LogIngestor:
         self.inventory = {key: value.get(key) for key in
                           ("Gems", "Gold", "WildCardCommons", "WildCardUnCommons",
                            "WildCardRares", "WildCardMythics", "TotalVaultProgress")}
+        # The log carries no itemised transactions — the Changes array is always empty —
+        # but it restates the balance many times a session. Keeping each distinct reading
+        # with its timestamp turns that into a measured history instead of a guess.
+        point = {**self.inventory, "at": read_timestamp(record["payload"].get("timestamp")) or self._clock}
+        if not self.wallet or {k: v for k, v in self.wallet[-1].items() if k != "at"} != self.inventory:
+            self.wallet.append(point)
 
     def _on_rank(self, value, line, record):
         self.rank = {key: value.get(key) for key in
