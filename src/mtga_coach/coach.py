@@ -139,6 +139,15 @@ def review(api_key, mode, material):
                            "Not a verdict on the right play.")}
 
 
+# An API account is billed separately from a Claude.ai subscription, so an empty balance
+# is the most common first-run failure and deserves an answer that says what to do.
+BILLING_HINT = ("This Anthropic API account has no credit. An API account is billed "
+                "separately from a Claude.ai subscription: add credit at "
+                "console.anthropic.com under Plans & Billing.")
+
+
 def _message(error):
     detail = getattr(error, "message", None) or str(error)
+    if "credit balance is too low" in detail:
+        return BILLING_HINT
     return f"Anthropic returned an error: {detail}"

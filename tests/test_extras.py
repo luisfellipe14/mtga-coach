@@ -207,3 +207,21 @@ class KeyStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoachErrorTests(unittest.TestCase):
+    def test_an_empty_api_balance_is_explained_rather_than_dumped(self):
+        class Billing(Exception):
+            message = ("Error code: 400 - {'type': 'error', 'error': {'type': "
+                       "'invalid_request_error', 'message': 'Your credit balance is too low "
+                       "to access the Anthropic API. Please go to Plans & Billing.'}}")
+
+        readable = coach._message(Billing())
+        self.assertIn("billed separately from a Claude.ai subscription", readable)
+        self.assertNotIn("Error code: 400", readable)
+
+    def test_any_other_api_error_keeps_its_detail(self):
+        class Other(Exception):
+            message = "overloaded_error: the service is busy"
+
+        self.assertIn("overloaded_error", coach._message(Other()))
