@@ -27,7 +27,7 @@ if (-not $ready) {
     }
 }
 if (-not $ready) {
-    throw 'O MTGA Coach não abriu. Consulte %LOCALAPPDATA%/mtga-coach/server.err.log.'
+    throw 'MTGA Coach did not start. See %LOCALAPPDATA%/mtga-coach/server.err.log.'
 }
 if (-not $NoBrowser) { Start-Process $appUrl }
-Write-Output "MTGA Coach disponível em $appUrl"
+Write-Output "MTGA Coach is available at $appUrl"

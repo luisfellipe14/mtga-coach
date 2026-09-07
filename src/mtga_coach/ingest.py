@@ -109,31 +109,30 @@ def match_mode(event):
 
 
 def format_name(event):
-    for term, label in (("Historic", "Histórico"), ("Timeless", "Timeless"), ("Explorer", "Explorer"),
-                        ("Alchemy", "Alchemy"), ("Draft", "Draft"), ("Sealed", "Selado")):
+    for term in ("Historic", "Timeless", "Explorer", "Alchemy", "Draft", "Sealed", "Brawl"):
         if term in event:
-            return label
-    return "Standard" if event in ("Ladder", "Play", "Traditional_Ladder", "Traditional_Play") else event or "Não identificado"
+            return term
+    return "Standard" if event in ("Ladder", "Play", "Traditional_Ladder", "Traditional_Play") else event or "Unknown format"
 
 
-ACTION_NAMES = {"Play": "Jogar terreno", "Cast": "Conjurar", "Activate": "Ativar habilidade",
-                "Pass": "Passar prioridade", "Special": "Ação especial"}
+ACTION_NAMES = {"Play": "Play land", "Cast": "Cast", "Activate": "Activate ability",
+                "Pass": "Pass priority", "Special": "Special action"}
 CLIENT_NAMES = {
-    "MulliganResp": "Decisão de mulligan", "DeclareAttackersResp": "Declarar atacantes",
-    "SubmitAttackersReq": "Confirmar ataque", "DeclareBlockersResp": "Declarar bloqueadores",
-    "SubmitBlockersReq": "Confirmar bloqueio", "SelectTargetsResp": "Selecionar alvo",
-    "SubmitTargetsReq": "Confirmar alvos", "SelectNResp": "Escolher cartas",
-    "SearchResp": "Buscar carta", "OptionalActionResp": "Escolher ação opcional",
-    "OrderResp": "Ordenar efeitos", "ConcedeReq": "Conceder", "CancelActionReq": "Cancelar ação",
-    "EffectCostResp": "Pagar custo", "CastingTimeOptionsResp": "Escolher modo",
-    "ChooseStartingPlayerResp": "Escolher quem começa",
+    "MulliganResp": "Mulligan decision", "DeclareAttackersResp": "Declare attackers",
+    "SubmitAttackersReq": "Confirm attack", "DeclareBlockersResp": "Declare blockers",
+    "SubmitBlockersReq": "Confirm blocks", "SelectTargetsResp": "Choose target",
+    "SubmitTargetsReq": "Confirm targets", "SelectNResp": "Choose cards",
+    "SearchResp": "Search library", "OptionalActionResp": "Optional action",
+    "OrderResp": "Order effects", "ConcedeReq": "Concede", "CancelActionReq": "Cancel action",
+    "EffectCostResp": "Pay cost", "CastingTimeOptionsResp": "Choose mode",
+    "ChooseStartingPlayerResp": "Choose who goes first",
 }
 
 
 def action_choice(action):
     kind = action.get("actionType", "").removeprefix("ActionType_")
     cid = action.get("grpId")
-    return {"type": kind, "label": ACTION_NAMES.get(kind, kind or "Ação"),
+    return {"type": kind, "label": ACTION_NAMES.get(kind, kind or "Action"),
             "card_ids": [cid] if isinstance(cid, int) and cid > 0 else [],
             "instance_id": action.get("instanceId"), "ability_id": action.get("abilityGrpId")}
 
@@ -142,7 +141,7 @@ def decision(message, line):
     kind = message["type"].removeprefix("ClientMessageType_")
     if kind == "PerformActionResp":
         choices = [action_choice(a) for a in message.get("performActionResp", {}).get("actions", [])]
-        return {"type": kind, "label": " / ".join(a["label"] for a in choices) or "Executar ação",
+        return {"type": kind, "label": " / ".join(a["label"] for a in choices) or "Take action",
                 "card_ids": list(dict.fromkeys(cid for a in choices for cid in a["card_ids"])),
                 "choices": choices, "source_line": line}
     if kind not in CLIENT_NAMES:
@@ -150,8 +149,8 @@ def decision(message, line):
     label = CLIENT_NAMES[kind]
     if kind == "MulliganResp":
         response = message.get("mulliganResp", {}).get("decision", "")
-        label = {"MulliganOption_Keep": "Manter a mão", "MulliganOption_AcceptHand": "Manter a mão",
-                 "MulliganOption_Mulligan": "Fazer mulligan"}.get(response, label)
+        label = {"MulliganOption_Keep": "Kept the hand", "MulliganOption_AcceptHand": "Kept the hand",
+                 "MulliganOption_Mulligan": "Took a mulligan"}.get(response, label)
     # Only gameplay selections, never the unrestricted original payload.
     keys = ("mulliganResp", "declareAttackersResp", "declareBlockersResp", "selectTargetsResp",
             "selectNResp", "orderResp", "searchResp", "effectCostResp", "castingTimeOptionsResp")
@@ -413,7 +412,7 @@ class LogIngestor:
         self.games[self.current_key] = {
             "id": self.current_key, "match_id_hashed": self.current_match,
             "game_number": info.get("gameNumber", 1),
-            "mode": mode or match_mode(event), "mode_basis": "protocolo" if mode else "nome do evento",
+            "mode": mode or match_mode(event), "mode_basis": "protocol" if mode else "event name",
             "format": format_name(event), "event_id": event,
             "super_format": info.get("superFormat", ""), "mulligan_type": info.get("mulliganType", ""),
             "deck_id": deck_hash(meta["deck"]),
@@ -432,7 +431,7 @@ class LogIngestor:
     def _absorb_game_info(self, game, reducer, info):
         mode = protocol.match_mode_from_win_condition(info.get("matchWinCondition"))
         if mode:
-            game["mode"], game["mode_basis"] = mode, "protocolo"
+            game["mode"], game["mode_basis"] = mode, "protocol"
         current = reducer.current["info"]
         if current.get("stage") == "GameStage_GameOver":
             game["status"] = "complete"

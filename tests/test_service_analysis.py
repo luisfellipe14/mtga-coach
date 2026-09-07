@@ -110,7 +110,7 @@ class ServiceAnalysisTests(unittest.TestCase):
     def test_mode_and_start_come_from_the_protocol_not_from_the_event_name(self):
         games = self.service.games()["games"]
         self.assertEqual({game["mode"] for game in games}, {"BO1"})
-        self.assertEqual({game["mode_basis"] for game in games}, {"protocolo"})
+        self.assertEqual({game["mode_basis"] for game in games}, {"protocol"})
         self.assertTrue(all(game["on_play"] is True for game in games))
         summary = self.service.summary()
         self.assertEqual(summary["by_start"]["on_play"]["games"], 2)
@@ -158,7 +158,7 @@ class ServiceAnalysisTests(unittest.TestCase):
         profile = self.service.opponent_profile(game_id)
         self.assertEqual([card["name"] for card in profile["cards"]], ["Ilha"])
         self.assertEqual(profile["colours"], {"U": 1})
-        self.assertIn("não nomeia um arquétipo", profile["note"])
+        self.assertIn("names no archetype", profile["note"])
 
     def test_frames_are_served_in_pages_and_an_unknown_game_is_refused(self):
         game_id = self.game_id("partida-1")
@@ -178,9 +178,9 @@ class ServiceAnalysisTests(unittest.TestCase):
     def test_comparing_two_small_samples_reports_overlap_and_the_needed_size(self):
         result = self.service.compare_samples({"wins": 12, "games": 20}, {"wins": 14, "games": 20})
         self.assertTrue(result["intervals_overlap"])
-        self.assertIn("não se separam", result["verdict"])
+        self.assertIn("do not separate", result["verdict"])
         self.assertGreater(result["games_needed_for_five_points"], 1000)
-        self.assertIn("antes de começar", result["warning"])
+        self.assertIn("before you start", result["warning"])
 
     def test_binding_a_composition_requires_a_deck_the_log_actually_named(self):
         with self.assertRaises(ValueError):

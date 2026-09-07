@@ -68,12 +68,12 @@ class HttpApiTests(unittest.TestCase):
         self.service.store.save_import({"source_sha256": "blocked", "record_count": 1, "warnings": [], "games": [game("blocked-game", frames=[{**game()["frames"][0], "quality": "blocked"}])]}, "upload", 1)
         status, response = self.request("GET", "/api/games/blocked-game/context?index=0")
         self.assertEqual(status, 400)
-        self.assertEqual(response["error"], "contexto indisponível")
+        self.assertEqual(response["error"], "context unavailable")
 
     def test_health_identifies_the_application_and_server_drops_excess_connections(self) -> None:
         status, health = self.request("GET", "/api/health")
         self.assertEqual(status, 200)
-        self.assertEqual(health, {"status": "ok", "app": "mtga-coach", "version": "0.2.0"})
+        self.assertEqual(health, {"status": "ok", "app": "mtga-coach", "version": "0.3.0"})
 
         capacity_server = create_server(self.service, port=0)
         held = []

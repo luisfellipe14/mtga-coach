@@ -45,7 +45,7 @@ class RecordScannerTests(unittest.TestCase):
         self.assertEqual(scanner.warnings, [])
         scanner.feed(b"", final=True)
         self.assertEqual(len(scanner.warnings), 1)
-        self.assertIn("linha 2", scanner.warnings[0])
+        self.assertIn("line 2", scanner.warnings[0])
 
 
 if __name__ == "__main__":

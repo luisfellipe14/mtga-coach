@@ -10,4 +10,4 @@ class LaunchTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(run), '--smoke'],
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('servidor local e API verificados', result.stdout)
+        self.assertIn('local server and API verified', result.stdout)

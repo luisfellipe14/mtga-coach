@@ -15,13 +15,13 @@ LEAVES_PLAY = {"Sacrifice", "Destroy", "SBA_Damage", "SBA_ZeroToughness",
                "SBA_LegendRule", "SBA_Deathtouch", "SBA_ZeroLoyalty"}
 
 KIND_LABELS = {
-    "draw": "Compra", "play_land": "Terreno jogado", "cast": "Mágica conjurada",
-    "resolve": "Resolveu", "leaves_play": "Saiu do campo", "discard": "Descarte",
-    "exile": "Exilada", "countered": "Anulada", "return": "Devolvida",
-    "mill": "Moída", "move": "Movimentação", "life": "Vida alterada",
-    "damage": "Dano", "reveal": "Carta revelada", "token": "Ficha criada",
-    "turn": "Novo turno", "shuffle": "Embaralhamento", "counter": "Marcador",
-    "action": "Ação do jogador", "mulligan": "Mulligan", "target": "Alvo escolhido",
+    "draw": "Drew", "play_land": "Land played", "cast": "Cast",
+    "resolve": "Resolved", "leaves_play": "Left the battlefield", "discard": "Discarded",
+    "exile": "Exiled", "countered": "Countered", "return": "Returned",
+    "mill": "Milled", "move": "Moved", "life": "Life changed",
+    "damage": "Damage", "reveal": "Revealed", "token": "Token created",
+    "turn": "New turn", "shuffle": "Shuffled", "counter": "Counter",
+    "action": "Player action", "mulligan": "Mulligan", "target": "Target chosen",
 }
 
 _CATEGORY_KINDS = {
@@ -56,7 +56,7 @@ def _transfer_event(annotation, resolve, zone_kind_of):
         "seat": identity.get("owner"), "card_id": identity.get("card_id"),
         "instance_id": instance_id, "from_zone": source_zone, "to_zone": target_zone,
         "category": category,
-        "category_label": protocol.TRANSFER_NAMES.get(category, category or "Movimentação"),
+        "category_label": protocol.TRANSFER_NAMES.get(category, category or "Moved"),
     }
 
 
@@ -152,22 +152,24 @@ def describe(event, card_name, self_seat=None):
     """One line for the interface. `card_name(card_id)` supplies the local catalogue name."""
     seat = event.get("seat")
     if self_seat and seat in (1, 2):
-        who = "Você" if seat == self_seat else "Adversário"
+        who = "You" if seat == self_seat else "Opponent"
     else:
-        who = {1: "Jogador 1", 2: "Jogador 2"}.get(seat, "")
-    name = card_name(event["card_id"]) if event.get("card_id") else "carta desconhecida"
+        who = {1: "Player 1", 2: "Player 2"}.get(seat, "")
+    # The label is presentation, so it is read from the current table rather than from
+    # whatever was stored when the game was first imported.
+    label = KIND_LABELS.get(event.get("kind"), event.get("label") or event.get("kind"))
+    name = card_name(event["card_id"]) if event.get("card_id") else "an unknown card"
     if event["kind"] == "life":
         amount = event.get("amount")
-        return f"{who}: vida {amount:+d}" if isinstance(amount, int) else f"{who}: vida alterada"
+        return f"{who}: life {amount:+d}" if isinstance(amount, int) else f"{who}: life changed"
     if event["kind"] == "damage":
-        return f"{name} causou {event.get('amount')} de dano"
+        return f"{name} dealt {event.get('amount')} damage"
     if event["kind"] == "turn":
         if self_seat and seat in (1, 2):
-            return "Seu turno" if seat == self_seat else "Turno do adversário"
-        return f"Turno de {who}" if who else "Novo turno"
+            return "Your turn" if seat == self_seat else "Opponent's turn"
+        return f"{who}'s turn" if who else "New turn"
     if event["kind"] == "shuffle":
-        return f"{who} embaralhou {event.get('count', 0)} cartas"
+        return f"{who} shuffled {event.get('count', 0)} cards"
     if event["kind"] == "draw" and not event.get("card_id"):
-        return (f"{who} comprou uma carta não revelada" if who
-                else "Compra de identidade não revelada")
-    return f"{event.get('label', event['kind'])}: {name}"
+        return f"{who} drew an undisclosed card" if who else "A card was drawn, undisclosed"
+    return f"{label}: {name}"

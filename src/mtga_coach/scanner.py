@@ -71,8 +71,8 @@ class RecordScanner:
                     break  # More bytes are expected; the record is not invalid yet.
                 if truncated:
                     self.warnings.append(
-                        f"Registro JSON incompleto na linha {self._line_of(start)}; "
-                        "o trecho final aguarda complemento ou nova importação.")
+                        f"Incomplete JSON record at line {self._line_of(start)}; "
+                        "the trailing stretch awaits more bytes or a fresh import.")
                     consumed = len(self._buffer)
                     break
                 # Unity's device diagnostics print JSON-like dictionaries with bare enum

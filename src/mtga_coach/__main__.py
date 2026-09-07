@@ -20,7 +20,7 @@ def smoke():
                 summary = json.load(response)
             if summary["games"] != 0:
                 raise RuntimeError("Unexpected initial data in smoke test")
-            print("MTGA Coach: servidor local e API verificados.")
+            print("MTGA Coach: local server and API verified.")
         finally:
             server.shutdown()
             server.server_close()
@@ -29,7 +29,7 @@ def smoke():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MTGA Coach — app local de revisão")
+    parser = argparse.ArgumentParser(description="MTGA Coach — local match review")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18731)
     parser.add_argument("--data-dir", type=Path)
@@ -44,7 +44,7 @@ def main():
         try:
             service.import_configured()
         except (OSError, ValueError):
-            print("Importação inicial indisponível; use Importar logs na interface.")
+            print("Initial import unavailable; use Import logs in the interface.")
     server = create_server(service, args.host, args.port)
     print(f"MTGA Coach em http://127.0.0.1:{server.server_port}/", flush=True)
     try:

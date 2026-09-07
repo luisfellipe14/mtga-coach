@@ -22,7 +22,7 @@ test('selectReplayFrame preserves API frame order and exposes its quality warnin
   assert.equal(replay.warning, 'Estado anterior ausente.');
 });
 
-test('filterGamesByMode shows only the selected mode while ambos retains unknown games', () => {
+test('filterGamesByMode shows only the selected mode while both retains unknown games', () => {
   const games = [
     { id: 'bo1', mode: 'BO1' },
     { id: 'bo3', mode: 'BO3' },
@@ -30,7 +30,7 @@ test('filterGamesByMode shows only the selected mode while ambos retains unknown
   ];
 
   assert.deepEqual(filterGamesByMode(games, 'BO1').map((game) => game.id), ['bo1']);
-  assert.deepEqual(filterGamesByMode(games, 'ambos').map((game) => game.id), ['bo1', 'bo3', 'unknown']);
+  assert.deepEqual(filterGamesByMode(games, 'both').map((game) => game.id), ['bo1', 'bo3', 'unknown']);
 });
 
 test('contextEndpoint requests exactly the selected frame and never a later frame', () => {

@@ -13,34 +13,34 @@ TRANSIENT_ZONES = ("Limbo", "Pending", "Suppressed")
 CONCEALED_ZONES = ("Library",)
 
 ZONE_NAMES = {
-    "Hand": "Mão", "Battlefield": "Campo de batalha", "Library": "Grimório",
-    "Graveyard": "Cemitério", "Exile": "Exílio", "Stack": "Pilha",
-    "Revealed": "Reveladas", "Sideboard": "Sideboard", "Command": "Comando",
-    "Limbo": "Limbo", "Pending": "Pendente", "Suppressed": "Suprimida",
+    "Hand": "Hand", "Battlefield": "Battlefield", "Library": "Library",
+    "Graveyard": "Graveyard", "Exile": "Exile", "Stack": "Stack",
+    "Revealed": "Revealed", "Sideboard": "Sideboard", "Command": "Command",
+    "Limbo": "Limbo", "Pending": "Pending", "Suppressed": "Suppressed",
 }
 
 PHASE_NAMES = {
-    "Beginning": "Início", "Main1": "Principal 1", "Combat": "Combate",
-    "Main2": "Principal 2", "Ending": "Final",
+    "Beginning": "Beginning", "Main1": "Main 1", "Combat": "Combat",
+    "Main2": "Main 2", "Ending": "Ending",
 }
 
 STEP_NAMES = {
-    "Untap": "Desvirar", "Upkeep": "Manutenção", "Draw": "Compra",
-    "BeginCombat": "Início do combate", "DeclareAttack": "Declarar atacantes",
-    "DeclareBlock": "Declarar bloqueadores", "CombatDamage": "Dano de combate",
-    "EndCombat": "Fim do combate", "End": "Fim do turno", "Cleanup": "Limpeza",
+    "Untap": "Untap", "Upkeep": "Upkeep", "Draw": "Draw",
+    "BeginCombat": "Begin combat", "DeclareAttack": "Declare attackers",
+    "DeclareBlock": "Declare blockers", "CombatDamage": "Combat damage",
+    "EndCombat": "End of combat", "End": "End step", "Cleanup": "Cleanup",
 }
 
 # AnnotationType_ZoneTransfer "category" detail, as written by the game engine.
 TRANSFER_NAMES = {
-    "Draw": "Compra", "PlayLand": "Terreno jogado", "CastSpell": "Mágica conjurada",
-    "Resolve": "Resolução", "Countered": "Anulada", "Discard": "Descarte",
-    "Sacrifice": "Sacrifício", "Destroy": "Destruição", "Exile": "Exílio",
-    "Put": "Colocada", "Return": "Devolvida", "Conjure": "Conjurada do nada",
-    "Mill": "Moída", "CardRevealed": "Revelada", "SBA_Damage": "Morte por dano",
-    "SBA_ZeroToughness": "Morte por resistência zero", "SBA_LegendRule": "Regra da lenda",
-    "SBA_Deathtouch": "Morte por toque mortal", "SBA_ZeroLoyalty": "Lealdade zero",
-    "Countered_Fizzle": "Anulada por alvo ilegal", "MoveToStack": "Foi para a pilha",
+    "Draw": "Drawn", "PlayLand": "Land played", "CastSpell": "Spell cast",
+    "Resolve": "Resolved", "Countered": "Countered", "Discard": "Discarded",
+    "Sacrifice": "Sacrificed", "Destroy": "Destroyed", "Exile": "Exiled",
+    "Put": "Put into play", "Return": "Returned", "Conjure": "Conjured",
+    "Mill": "Milled", "CardRevealed": "Revealed", "SBA_Damage": "Died to damage",
+    "SBA_ZeroToughness": "Died to zero toughness", "SBA_LegendRule": "Legend rule",
+    "SBA_Deathtouch": "Died to deathtouch", "SBA_ZeroLoyalty": "Zero loyalty",
+    "Countered_Fizzle": "Countered on an illegal target", "MoveToStack": "Put on the stack",
 }
 
 # ActionType_* index used by AnnotationType_UserActionTaken's "actionType" detail.
@@ -52,9 +52,9 @@ USER_ACTION_TYPES = {
 MANA_COLOR_INDEX = {1: "W", 2: "U", 3: "B", 4: "R", 5: "G", 6: "C"}
 
 RESULT_REASONS = {
-    "ResultReason_Game": "Fim de jogo", "ResultReason_Concede": "Concessão",
-    "ResultReason_Timeout": "Tempo esgotado", "ResultReason_Disconnect": "Desconexão",
-    "ResultReason_Draw": "Empate", "ResultReason_Sideboard": "Sideboard",
+    "ResultReason_Game": "Game ended", "ResultReason_Concede": "Concession",
+    "ResultReason_Timeout": "Timeout", "ResultReason_Disconnect": "Disconnect",
+    "ResultReason_Draw": "Draw", "ResultReason_Sideboard": "Sideboard",
 }
 
 MATCH_WIN_CONDITIONS = {
@@ -71,7 +71,7 @@ def zone_kind(zone):
 
 
 def zone_label(kind):
-    return ZONE_NAMES.get(kind, kind or "Zona não identificada")
+    return ZONE_NAMES.get(kind, kind or "Unnamed zone")
 
 
 def phase_label(phase, step):

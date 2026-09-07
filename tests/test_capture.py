@@ -125,7 +125,7 @@ class LogWatcherTests(unittest.TestCase):
 
     def test_a_missing_log_is_reported_instead_of_raising(self):
         self.assertEqual(self.watcher.poll_once(), 0)
-        self.assertIn("não encontrado", self.watcher.status()["error"])
+        self.assertIn("not found", self.watcher.status()["error"])
         self.assertEqual(fingerprint(self.log), "")
         self.assertIsNone(detailed_logs_enabled(self.log))
 

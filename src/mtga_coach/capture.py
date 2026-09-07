@@ -140,7 +140,7 @@ class LogWatcher:
         """Read whatever is new. Returns the number of bytes consumed in this pass."""
         if not self.path.is_file():
             with self._lock:
-                self.state["error"] = "arquivo de log não encontrado"
+                self.state["error"] = "log file not found"
             return 0
         size = self.path.stat().st_size
         with self._lock:

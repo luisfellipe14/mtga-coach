@@ -1,123 +1,146 @@
 # MTGA Coach
 
-App local para rever as próprias decisões no MTG Arena e ajustar decks a partir dos logs
-que o cliente já grava neste PC. Roda inteiro no `127.0.0.1`, só com a biblioteca padrão do
-Python, sem rede e sem conta em serviço nenhum.
+A local app for reviewing your own Magic: The Gathering Arena games and tuning your decks,
+built on the log the client already writes on your machine. It runs entirely on
+`127.0.0.1`, on the Python standard library, with no account anywhere.
 
-## O que ele faz
+## What it does
 
-- **Acompanha o `Player.log` enquanto você joga** e grava cada partida assim que ela avança.
-  Isso não é conveniência: o Arena **apaga o `Player.log` a cada vez que o cliente abre**.
-  Sem acompanhamento, a sessão que você acabou de jogar some quando você reinicia o jogo.
-- **Reconstrói cada jogo** turno a turno — mão conhecida, campo, pilha, vida, ações — e
-  marca explicitamente onde a reconstrução tem lacuna.
-- **Monta a linha do tempo** do que aconteceu (compras, terrenos, mágicas, dano, revelações)
-  a partir das anotações do protocolo, não só das fotografias do estado.
-- **Conta o seu grimório** em qualquer instante da partida e dá a probabilidade da próxima
-  compra e das três seguintes.
-- **Lista o que o adversário mostrou** — cartas e cores. Não nomeia arquétipo: é o que foi
-  visto, não o deck dele.
-- **Analisa o deck**: curva, base de mana contra a tabela publicada do Karsten, custo em
-  curingas, e taxa de vitória por carta na mão com o intervalo de confiança ao lado.
-- **Guarda notas e hipóteses** suas por posição e por deck.
+- **Follows `Player.log` while you play** and records each game as it progresses. This is not
+  a convenience: Arena **wipes `Player.log` every time the client starts**. Without the
+  follower running, the session you just played is gone when you restart the game.
+- **Reconstructs every game** turn by turn — known hand, battlefield, stack, life, actions —
+  and marks explicitly where the reconstruction has a gap.
+- **Builds the timeline** of what happened (draws, lands, spells, damage, reveals) from the
+  protocol annotations, not just from the state snapshots.
+- **Counts your library** at any instant of the game and gives the odds for the next draw and
+  the three after it.
+- **Lists what the opponent showed** — cards and colours. It names no archetype: this is what
+  was seen, not their deck.
+- **Analyses the deck**: curve, mana base against Karsten's published source table, wildcard
+  cost, and win rate per card in hand with the confidence interval beside it.
+- **Imports and exports decklists** in Arena's own format, so a list goes straight back into
+  the client, and any list you paste gets the same analysis before you build it.
+- **Keeps your notes and hypotheses** per position and per deck.
+- **Optionally fetches card art** from Scryfall and **optionally asks Claude** to read a
+  position. Both are off until you switch them on.
 
-O que ele **não** faz: não diz qual era a jogada certa, não atribui probabilidade de vitória
-a linhas alternativas e não chama IA nenhuma. Não existe hoje nada público que avalie linha
-de jogo em Magic com garantia — o jogo é Turing-completo, não há oráculo. O app entrega o
-contexto sanitizado para você revisar; a leitura é sua.
+What it does **not** do: it never tells you what the correct play was, never assigns win
+probabilities to alternative lines. Nothing public can evaluate a Magic line with any
+guarantee — the game is Turing-complete, so no oracle exists. The app hands you a sanitised
+context and the numbers; the reading is yours.
 
-## Requisitos
+## Requirements
 
-1. **Python 3.14** no PATH (nenhum pacote externo).
-2. **Logs detalhados ligados no Arena**: engrenagem → *Adjust Options* → *View Account* →
-   marcar **Detailed Logs (Plugin Support)** → reiniciar o cliente. Sem isso o log não tem
-   registro de protocolo nenhum e o app não tem o que ler. A tela de Estatísticas mostra se
-   estão ligados.
+1. **Python 3.14** on the PATH. The app itself needs no third-party package.
+2. **Detailed logs enabled in Arena**: gear icon → *Adjust Options* → *View Account* → tick
+   **Detailed Logs (Plugin Support)** → restart the client. Without it the log carries no
+   protocol records at all. The Statistics screen tells you whether they are on.
+3. Only for the AI reading: `python -m pip install anthropic`, plus your own Anthropic API key.
 
-## Como abrir
+## Running it
 
-Duplo clique em `Abrir MTGA Coach.cmd`, ou:
+Double-click `Abrir MTGA Coach.cmd`, or:
 
 ```
 python run.py                                   # http://127.0.0.1:18731
-python run.py --import-current                  # já importa o log configurado ao subir
-python run.py --smoke                           # verificação rápida do servidor
+python run.py --import-current                  # import the configured log on start-up
+python run.py --smoke                           # quick server check
 ```
 
-O servidor só aceita `127.0.0.1`; qualquer outro endereço é recusado na inicialização.
+The server binds to `127.0.0.1` only; any other address is refused at start-up.
 
-## Fluxo de uso
+## How to use it
 
-1. Abra o app **antes** de jogar e clique em **Acompanhar partidas**. Deixe a aba aberta.
-2. Jogue. As partidas aparecem na lista conforme avançam.
-3. Abra uma partida, ande pelos quadros (setas ← →), e use as abas da barra lateral:
-   *Decisão*, *Biblioteca*, *Adversário*, *Linha do tempo*.
-4. Registre a nota do que quer revisitar. Ela volta na aba **Treino**.
-5. Em **Decks**, vincule a composição observada ao deck salvo no Arena (o log não faz esse
-   vínculo sozinho) e leia a base de mana e o custo em curingas.
-6. Em **Estatísticas**, veja a taxa por modo, por quem começou, e o tamanho da amostra.
+1. Open the app **before** you play and click **Follow matches**. Leave the tab open.
+2. Play. Games appear in the list as they progress.
+3. Open a game, step through the frames (← → arrows), and use the sidebar tabs:
+   *Decision*, *Library*, *Opponent*, *Timeline*, *AI reading*.
+4. Write the note you want to revisit. It comes back under **Training**.
+5. Under **Decks**, link the observed composition to the deck saved in Arena (the log never
+   does that for you), read the mana base and the wildcard cost, and copy the list back out.
+6. Under **Statistics**, see the rate by mode, by who went first, and the size of the sample.
+7. Under **Settings**, switch on card art, store your API key, or analyse a pasted list.
 
-**Importar logs** lê o `Player.log` atual inteiro (em blocos, sem carregar na memória).
-**Enviar log** aceita um arquivo que você escolher, até 64 MB. Reimportar o mesmo arquivo não
-duplica nada: a identidade é o SHA-256 do conteúdo.
+**Import logs** reads the whole current `Player.log` in chunks, without loading it into
+memory. **Upload log** takes a file you pick, up to 64 MB. Re-importing the same file
+duplicates nothing: identity is the SHA-256 of the content.
 
-## Onde ficam os dados
+## Where the data lives
 
-Tudo em `%LOCALAPPDATA%/mtga-coach/`:
+Everything under `%LOCALAPPDATA%/mtga-coach/`:
 
-- `reviews.sqlite3` — partidas, quadros comprimidos, eventos, notas e hipóteses.
-- `sources/` — cópias de log que você tenha enviado manualmente.
+- `reviews.sqlite3` — games, compressed frames, events, notes and hypotheses.
+- `art/` — card art you chose to download.
+- `sources/` — copies of any log you uploaded by hand.
+- `anthropic.key` — your API key, encrypted with Windows DPAPI for your account only.
 
-O identificador da conta e o da partida são gravados **em hash**; o nome do adversário é
-guardado porque aparece na tela. Nada sai desta máquina.
+Account and match identifiers are stored **hashed**; the opponent's name is kept because it
+appears on screen. Nothing leaves this machine except the two opt-in features below.
 
-Os quadros vão comprimidos em blocos: uma partida de 19 turnos ocupa cerca de 2% do JSON
-cru. Na amostra de teste, oito partidas passaram de 25,5 MB para menos de 1 MB.
+Frames are stored as compressed blocks: a 19-turn game takes about 2% of its raw JSON. On the
+test sample, eight games went from 25.5 MB to under 1 MB.
 
-## Limites conhecidos
+## The two things that use the network
 
-- **BO3 não foi conferido contra uma partida real.** O modelo de dados separa jogo e
-  confronto desde o início, mas nenhuma captura BO3 real passou pelo app ainda. Até isso
-  acontecer, o BO3 é código não validado.
-- **A coleção não está no log.** O Arena parou de publicar as cartas que você possui, então
-  o custo em curingas é o da lista inteira, não o que falta comprar.
-- **O log não liga a lista jogada ao deck salvo.** O vínculo é seu, feito uma vez por
-  composição, e fica gravado.
-- **Mão inicial no BO1 não é aleatória.** A Wizards declara que o BO1 escolhe a mão entre
-  cópias embaralhadas do deck, puxando para a proporção média de terras, sem publicar o
-  critério. Comparar uma taxa de mão inicial medida no BO1 com o hipergeométrico é errado, e
-  o app diz isso onde mostra o número.
-- **Amostra pessoal é pequena.** Separar 55% de 50% com 95% de confiança e 80% de poder
-  exige cerca de 1.565 partidas por braço. O app mostra o intervalo de Wilson ao lado de toda
-  taxa justamente para não deixar 20 partidas parecerem um veredito.
-- **Sem integração de IA.** Fica para uma decisão separada de credencial e orçamento.
+Both start switched off, and both are per-feature toggles in **Settings**.
 
-## Fontes de método
+- **Card art (Scryfall).** Sends a set code and a collector number, nothing else. Each image
+  is downloaded once and served from disk afterwards. Card names and rules text keep coming
+  from the Arena database installed on your PC.
+- **AI reading (Anthropic).** Sends the sanitised position — only what you knew at that
+  instant — plus the numbers the app computed. The model is instructed not to recompute them,
+  not to invent card text, and never to call a play correct. Your key is encrypted locally and
+  never written to the database or to git.
+
+## Known limits
+
+- **BO3 has not been checked against a real match.** The data model separates game from match
+  from the start, and there are synthetic tests, but no real BO3 capture has gone through the
+  app yet. Until it has, BO3 is unvalidated code.
+- **The collection is not in the log.** Arena stopped publishing which cards you own, so the
+  wildcard cost is the cost of the whole list, not what you are missing.
+- **The log never links the list played to the deck saved in Arena.** You make that link once
+  per composition and it is remembered.
+- **Best-of-one opening hands are not random.** Wizards states that BO1 draws the opening hand
+  from separately shuffled copies of the deck, leaning toward the average land ratio, without
+  publishing the weighting. Comparing a measured BO1 opening-hand rate to the hypergeometric
+  baseline is wrong, and the app says so where it shows the number.
+- **A personal sample is small.** Telling 55% from 50% at 95% confidence and 80% power takes
+  about 1,565 games per arm. The app shows the Wilson interval next to every rate precisely so
+  that 20 games never look like a verdict.
+
+## Method sources
 
 - Frank Karsten, *How Many Sources Do You Need to Consistently Cast Your Spells? A 2022
-  Update* (TCGplayer) — tabela de fontes por cor, 60 cartas, 90% de consistência, mulligan de
-  Londres modelado.
+  Update* (TCGplayer) — colour source table, 60-card deck, 90% consistency, London mulligan
+  modelled.
 - Frank Karsten, *How Many Lands Do You Need in Your Deck? An Updated Analysis* (TCGplayer) —
-  a regressão `19,59 + 1,90 × valor de mana médio`.
-- Wizards of the Coast (out/2018, esclarecido em mai/2019) — declaração sobre a mão inicial
-  do BO1.
-- Intervalo de Wilson e teste de duas proporções: estatística padrão, calculada localmente.
+  the regression `19.59 + 1.90 × average mana value`.
+- Wizards of the Coast (Oct 2018, clarified May 2019) — the statement on BO1 opening hands.
+- Wilson score interval and the two-proportion test: standard statistics, computed locally.
+- Card art and printing data: [Scryfall](https://scryfall.com). Card names and rules text:
+  the Arena client's own database.
 
-## Fronteira com a Wizards
+## Where this stands with Wizards
 
-O app lê um arquivo local que a própria Wizards criou para plugins de terceiros, com a opção
-ligada pelo usuário, e não faz mais nada: não injeta memória, não intercepta rede, não
-automatiza jogada, não envia dado a lugar nenhum. Uso pessoal, não comercial, na linha da
-Fan Content Policy. Não é produto oficial nem endossado pela Wizards.
+The app reads a local file that Wizards itself created for third-party plugins, with the
+option enabled by the user, and does nothing else: no memory injection, no network
+interception, no automated play, no data sent anywhere. Personal, non-commercial use, in line
+with the Fan Content Policy. Not an official product and not endorsed by Wizards of the Coast.
 
-## Desenvolvimento
+## Development
 
 ```
-python -m unittest discover -s tests -t .      # 67 testes
-node tests/test_ui.mjs                         # funções puras da interface
+python -m unittest discover -s tests -t .      # 82 tests
+node tests/test_ui.mjs                         # pure view-model functions
 python -m compileall -q src
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch_mtga_coach.ps1 -SmokeTest
 ```
 
-Especificação e plano em `docs/specs/001-revisao-de-decisoes/`. Comparação com o estado da
-arte e as lacunas que sobraram em `docs/analise/`.
+The interface and every user-facing string are in English. Card text follows the Arena
+client's own localisation tables — English by default, switchable in `catalog.LANGUAGE`.
+
+Specification, plan and the state-of-the-art comparison live under `docs/`. Those are
+internal working notes and are written in Portuguese; everything the product surfaces —
+interface, API messages, exported context, AI prompts — is English.

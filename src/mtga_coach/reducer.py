@@ -71,7 +71,7 @@ class GameReducer:
             raw = deepcopy(parent or self.current or {**_empty_state(), "quality": "blocked"})
             if parent is None:
                 raw["quality"] = "blocked"
-                warning = f"Estado anterior {previous} não localizado; trecho sem reconstrução validada."
+                warning = f"Previous state {previous} was not found; this stretch is not validated."
                 if warning not in raw["warnings"]:
                     raw["warnings"].append(warning)
         annotations = message.get("annotations", []) or []
@@ -118,7 +118,7 @@ class GameReducer:
         quality = raw['quality']
         if not self.self_seat:
             quality = 'blocked'
-            warnings.append('Seu lado da mesa não foi identificado neste trecho do log.')
+            warnings.append('Your seat could not be identified in this stretch of the log.')
         zones = []
         for zid, zone in raw["zones"].items():
             kind = protocol.zone_kind(zone)

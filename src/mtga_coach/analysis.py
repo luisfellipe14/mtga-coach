@@ -16,9 +16,9 @@ STARTING_HAND = 7
 # exact weighting is undisclosed, so a measured BO1 opening-hand rate is not comparable
 # to the hypergeometric baseline below. Draws after the opening hand are not smoothed.
 BO1_SMOOTHING_CAVEAT = (
-    "O BO1 do Arena escolhe a mão inicial entre cópias embaralhadas do deck, favorecendo "
-    "a proporção média de terras. O critério exato não é publicado: uma taxa de mão inicial "
-    "medida no BO1 não se compara à probabilidade hipergeométrica."
+    "Arena's best-of-one draws the opening hand from separately shuffled copies of the deck "
+    "and leans toward the deck's average land ratio. The exact weighting is undisclosed, so a "
+    "best-of-one opening-hand rate is not comparable to the hypergeometric baseline."
 )
 
 
@@ -29,7 +29,7 @@ def hypergeometric_at_least(wanted, successes, population, draws):
     always does; invalid parameters raise instead of silently returning a number.
     """
     if min(wanted, successes, population, draws) < 0 or draws > population or successes > population:
-        raise ValueError("parâmetros fora do intervalo válido")
+        raise ValueError("parameters outside the valid range")
     if wanted == 0:
         return 1.0
     if wanted > successes or wanted > draws:
@@ -47,7 +47,7 @@ def cards_seen(turn, on_play, mulligans=0):
     *distinct cards seen* stays seven; the hand shrinks but the sample does not.
     """
     if turn < 1:
-        raise ValueError("turno deve começar em 1")
+        raise ValueError("turns start at 1")
     return STARTING_HAND + (turn - 1) + (0 if on_play else 1)
 
 
@@ -68,8 +68,8 @@ KARSTEN_2022_SOURCES = {
     (4, 4): 24,
 }
 KARSTEN_2022_CITATION = ("Frank Karsten, \"How Many Sources Do You Need to Consistently "
-                         "Cast Your Spells? A 2022 Update\", TCGplayer — deck de 60 cartas, "
-                         "90% de consistência, jogando primeiro, mulligan de Londres modelado.")
+                         "Cast Your Spells? A 2022 Update\", TCGplayer — 60-card deck, 90% "
+                         "consistency, on the play, London mulligan modelled.")
 
 # Karsten, "How Many Lands Do You Need in Your Deck? An Updated Analysis" (TCGplayer):
 # regression over 95,000+ tournament decklists.
@@ -126,7 +126,7 @@ def wilson_interval(wins, total, confidence=0.95):
     if total <= 0:
         return None
     if wins < 0 or wins > total:
-        raise ValueError("vitórias fora do intervalo da amostra")
+        raise ValueError("wins outside the sample")
     z = NormalDist().inv_cdf(1 - (1 - confidence) / 2)
     rate = wins / total
     denominator = 1 + z * z / total
@@ -143,7 +143,7 @@ def games_needed(baseline, difference, power=0.80, confidence=0.95):
     that keeps a deck change from being judged on noise.
     """
     if not 0 < baseline < 1 or difference <= 0 or baseline + difference >= 1:
-        raise ValueError("taxas fora do intervalo aberto (0,1)")
+        raise ValueError("rates must lie strictly between 0 and 1")
     z_alpha = NormalDist().inv_cdf(1 - (1 - confidence) / 2)
     z_beta = NormalDist().inv_cdf(power)
     other = baseline + difference
@@ -248,7 +248,7 @@ def colour_requirements(entries, deck_size=60, target=0.90):
         findings.append({"colour": colour, "pips": pips, "turn": demand["turn"],
                          "needed": needed, "have": have, "shortfall": max(0, needed - have),
                          "driver": demand["card"],
-                         "basis": "karsten-2022" if published is not None else "hipergeométrico",
+                         "basis": "karsten-2022" if published is not None else "hypergeometric",
                          "exact_turn": exact, "hypergeometric_floor": floor})
     return findings
 

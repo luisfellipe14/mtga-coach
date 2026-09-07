@@ -35,7 +35,7 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual([event["kind"] for event in events], ["draw", "play_land", "leaves_play"])
         self.assertEqual(events[0]["from_zone"], "Library")
         self.assertEqual(events[0]["card_id"], 100)
-        self.assertEqual(events[2]["category_label"], "Morte por dano")
+        self.assertEqual(events[2]["category_label"], "Died to damage")
 
     def test_an_undisclosed_object_produces_an_event_without_an_identity(self):
         events = timeline.build_events(
@@ -43,7 +43,7 @@ class TimelineTests(unittest.TestCase):
             resolve_from({}), ZONES.get)
         self.assertEqual(events[0]["kind"], "draw")
         self.assertIsNone(events[0]["card_id"])
-        self.assertIn("não revelada", timeline.describe(events[0], lambda cid: "nunca"))
+        self.assertIn("undisclosed", timeline.describe(events[0], lambda cid: "never"))
 
     def test_zero_damage_bookkeeping_is_not_reported_as_damage(self):
         real = annotation("DamageDealt", [288], {"damage": 3, "type": 1}, affector=292)
@@ -90,7 +90,7 @@ class ReducerLineageTests(unittest.TestCase):
                 + json.dumps({"greToClientEvent": {"greToClientMessages": [connect, first, renamed]}})).encode()
         game = ingest_log(data)["games"][0]
         self.assertEqual(game["mode"], "BO1")
-        self.assertEqual(game["mode_basis"], "protocolo")
+        self.assertEqual(game["mode_basis"], "protocol")
         battlefield = game["frames"][1]["zones"][0]
         self.assertEqual([item["instance_id"] for item in battlefield["objects"]], [287])
         self.assertEqual(battlefield["objects"][0]["card_id"], 100)
