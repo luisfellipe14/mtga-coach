@@ -7,6 +7,10 @@ from pathlib import Path
 from .config import default_card_database
 
 COLORS = {"1": "W", "2": "U", "3": "B", "4": "R", "5": "G"}
+# Card text comes from the localisation table the Arena client ships. English is the
+# default so the app reads the same as every list, article and site about the game.
+LANGUAGE = "enUS"
+LANGUAGES = ("enUS", "ptBR", "esES", "frFR", "deDE", "itIT", "jaJP", "koKR")
 # `Cards.Types` codes, confirmed against the installed database by joining TypeTextId.
 TYPE_CODES = {"1": "Artifact", "2": "Creature", "3": "Enchantment", "4": "Instant",
               "5": "Land", "8": "Planeswalker", "10": "Sorcery", "11": "Kindred",
@@ -23,8 +27,8 @@ def clean_text(text):
 
 
 def missing_card(cid):
-    return {"id": cid, "name": f"Carta #{cid}", "name_en": "", "text": "",
-            "mana_cost": "", "mana_value": None, "mana_tokens": [], "type_line": "ID não resolvido",
+    return {"id": cid, "name": f"Card #{cid}", "name_en": "", "text": "",
+            "mana_cost": "", "mana_value": None, "mana_tokens": [], "type_line": "Unresolved id",
             "colors": [], "color_identity": [], "is_land": False, "power": "", "toughness": "",
             "resolved": False, "set": "", "collector_number": "", "rarity": "",
             "is_token": False, "rebalanced": False, "linked_faces": []}
@@ -52,12 +56,13 @@ def resolve_cards(ids, card_database_path=None):
     con.row_factory = sqlite3.Row
     localization_cache = {}
 
-    def loc(lid, language="ptBR"):
+    def loc(lid, language=None):
         if not lid:
             return ""
+        language = language or LANGUAGE
         key = (int(lid), language)
         if key not in localization_cache:
-            table = "Localizations_ptBR" if language == "ptBR" else "Localizations_enUS"
+            table = f"Localizations_{language}" if language in LANGUAGES else "Localizations_enUS"
             row = con.execute(f"SELECT Loc FROM {table} WHERE LocId=? "
                               "ORDER BY CASE Formatted WHEN 1 THEN 0 WHEN 0 THEN 1 ELSE 2 END LIMIT 1",
                               (int(lid),)).fetchone()
@@ -89,7 +94,7 @@ def resolve_cards(ids, card_database_path=None):
             colors = [COLORS[x] for x in _codes(row.get("Colors")) if x in COLORS]
             identity = [COLORS[x] for x in _codes(row.get("ColorIdentity")) if x in COLORS]
             result[cid] = {
-                "id": cid, "name": name or name_en or f"Carta #{cid}", "name_en": name_en,
+                "id": cid, "name": name or name_en or f"Card #{cid}", "name_en": name_en,
                 "text": "\n".join(ability_texts), "mana_cost": "".join("{" + t + "}" for t in symbols),
                 "mana_value": value, "mana_tokens": symbols,
                 "type_line": type_line + (" — " + subtype if subtype else ""),
@@ -112,6 +117,79 @@ def resolve_cards(ids, card_database_path=None):
     finally:
         con.close()
     return result
+
+
+def _open(card_database_path=None):
+    path = Path(card_database_path) if card_database_path else default_card_database()
+    if not path or not Path(path).is_file():
+        return None
+    try:
+        con = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def lookup_by_print(set_code, collector_number, card_database_path=None):
+    """Arena id of one exact printing, or None when the local database has no such card."""
+    con = _open(card_database_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute(
+            "SELECT GrpId FROM Cards WHERE UPPER(ExpansionCode)=? AND CollectorNumber=? "
+            "ORDER BY IsToken, GrpId LIMIT 1",
+            (str(set_code).upper(), str(collector_number))).fetchone()
+        return int(row[0]) if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
+def english_name(card_id, card_database_path=None):
+    """English name of one Arena id, used to confirm a printing matches the line's name."""
+    con = _open(card_database_path)
+    if con is None:
+        return None
+    try:
+        row = con.execute(
+            "SELECT l.Loc FROM Cards c JOIN Localizations_enUS l ON l.LocId = c.TitleId "
+            "WHERE c.GrpId = ? LIMIT 1", (int(card_id),)).fetchone()
+        return str(row[0]) if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
+def lookup_by_name(name, card_database_path=None):
+    """Arena id for an English card name, preferring a real printing over a token.
+
+    Split and adventure cards are written with `//` in lists; Arena stores the front face
+    name, so the part before the separator is tried as well.
+    """
+    con = _open(card_database_path)
+    if con is None:
+        return None
+    candidates = [str(name).strip()]
+    if "//" in candidates[0]:
+        candidates.append(candidates[0].split("//")[0].strip())
+    try:
+        for candidate in candidates:
+            row = con.execute(
+                "SELECT c.GrpId FROM Cards c JOIN Localizations_enUS l ON l.LocId = c.TitleId "
+                "WHERE l.Loc = ? COLLATE NOCASE "
+                "ORDER BY c.IsToken, c.IsRebalanced, c.IsPrimaryCard DESC, c.GrpId DESC LIMIT 1",
+                (candidate,)).fetchone()
+            if row:
+                return int(row[0])
+        return None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
 
 
 def wildcard_cost(entries):

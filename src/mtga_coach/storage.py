@@ -225,7 +225,7 @@ class ReviewStore:
                 return {"created": False, "source_sha256": source_hash}
             games = snapshot.get("games", [])
             if not isinstance(games, list):
-                raise ValueError("games deve ser uma lista")
+                raise ValueError("games must be a list")
             with self.connection:
                 self.connection.execute(
                     "INSERT INTO imports (sha256, source_kind, byte_count, record_count, "
@@ -234,7 +234,7 @@ class ReviewStore:
                      _json(snapshot.get("warnings", [])), _now()))
                 for game in games:
                     if not isinstance(game, dict):
-                        raise ValueError("jogo inválido")
+                        raise ValueError("invalid game")
                     self._upsert_game(game, source_hash)
                 self._absorb_side_facts(snapshot)
         return {"created": True, "source_sha256": source_hash}
@@ -383,7 +383,7 @@ class ReviewStore:
         for row in noted:
             index = row["frame_index"]
             if old_frames.get(index) != new_frames.get(index):
-                raise ValueError("reimportação alteraria a posição de uma nota")
+                raise ValueError("re-importing would move a frame a note is attached to")
 
     def _row_to_game(self, row: sqlite3.Row) -> dict:
         game = {column: row[column] for column in GAME_COLUMNS}
@@ -483,12 +483,12 @@ class ReviewStore:
     def add_note(self, game_id: str, frame_index: int | None, body: str, tags: list[str]) -> dict:
         with self.lock:
             if self.game_summary(game_id) is None:
-                raise KeyError("jogo não encontrado")
+                raise KeyError("game not found")
             if frame_index is not None:
                 known = self.connection.execute(
                     "SELECT 1 FROM frame_index WHERE game_id = ? AND idx = ?", (game_id, frame_index)).fetchone()
                 if known is None:
-                    raise ValueError("posição da nota não encontrada")
+                    raise ValueError("frame for the note not found")
             with self.connection:
                 cursor = self.connection.execute(
                     "INSERT INTO notes (game_id, frame_index, body, tags_json, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -546,6 +546,13 @@ class ReviewStore:
         with self.lock:
             rows = self.connection.execute("SELECT deck_id, deck_uid, label FROM deck_bindings").fetchall()
             return {row["deck_id"]: dict(row) for row in rows}
+
+    def set_profile(self, key: str, value: object) -> None:
+        with self.lock, self.connection:
+            self.connection.execute(
+                "INSERT INTO profile (key, value_json, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, "
+                "updated_at=excluded.updated_at", (key, _json(value), _now()))
 
     def profile(self, key: str) -> object:
         with self.lock:

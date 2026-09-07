@@ -7,7 +7,11 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, timeline
+from . import analysis, coach, timeline
+from .ingest import format_name
+from .art import CREDIT as ART_CREDIT, ArtCache
+from .decklist import format_arena, parse_arena
+from .secrets import KeyStore
 from .storage import ReviewStore
 
 Importer = Callable[[bytes], dict]
@@ -50,6 +54,8 @@ class CoachService:
         self.importer = importer
         self.store = ReviewStore(self.data_dir)
         self.watcher = None
+        self.art = ArtCache(self.data_dir)
+        self.keys = KeyStore(self.data_dir)
 
     # ------------------------------------------------------------------ import
 
@@ -60,9 +66,9 @@ class CoachService:
 
             self.log_path = default_log_path()
         if self.log_path is None or not self.log_path.is_file():
-            raise ValueError("arquivo configurado não encontrado")
+            raise ValueError("configured file not found")
         if self.log_path.stat().st_size > MAX_LOG_BYTES:
-            raise ValueError("arquivo excede o limite")
+            raise ValueError("file exceeds the limit")
         if self.importer is not _default_importer:
             return self._import(self.log_path.read_bytes(), "configured")
         return self._import_stream(self.log_path, "configured")
@@ -89,12 +95,12 @@ class CoachService:
 
     def import_upload(self, body: bytes) -> dict:
         if len(body) > MAX_UPLOAD_BYTES:
-            raise ValueError("arquivo excede o limite")
+            raise ValueError("file exceeds the limit")
         return self._import(body, "upload")
 
     def _import(self, body: bytes, source_kind: str) -> dict:
         if len(body) > MAX_LOG_BYTES:
-            raise ValueError("arquivo excede o limite")
+            raise ValueError("file exceeds the limit")
         normalized = self.importer(body)
         source_hash = str(normalized.get("source_sha256") or sha256(body).hexdigest())
         normalized = {**normalized, "source_sha256": source_hash}
@@ -111,13 +117,16 @@ class CoachService:
     def _summary_game(self, game: dict) -> dict:
         summary = {key: game.get(key) for key in SUMMARY_FIELDS}
         summary["deck_label"] = self._deck_label(str(game.get("deck_id", "")))
+        # The format label is derived on read, so a row stored under an older build (or an
+        # older interface language) still reads the way the interface reads today.
+        summary["format"] = format_name(str(game.get("event_id") or "")) or summary["format"]
         return summary
 
     def _deck_label(self, deck_id: str) -> str:
         binding = self.store.deck_bindings().get(deck_id)
         if binding:
             return binding.get("label") or binding.get("deck_uid") or deck_id
-        return f"Composição {deck_id[:8]}"
+        return f"Composition {deck_id[:8]}"
 
     def summary(self) -> dict:
         games = self.store.games()
@@ -132,7 +141,8 @@ class CoachService:
             "imports": self.store.import_count(), "review_mode": "manual",
             "rank": self.store.profile("rank"), "inventory": self.store.profile("inventory"),
             "named_decks": self.store.named_decks(), "database_bytes": self.store.database_bytes(),
-            "capture": self.capture_status(),
+            "capture": self.capture_status(), "art": self.art_status(),
+            "coach": self.coach_status(), "art_credit": ART_CREDIT,
             "warnings": sorted({*self.store.import_warnings(),
                                 *(warning for game in games for warning in game.get("warnings", [])
                                   if isinstance(warning, str))}),
@@ -192,6 +202,7 @@ class CoachService:
             return None
         detail = dict(game)
         detail["deck_label"] = self._deck_label(str(game.get("deck_id", "")))
+        detail["format"] = format_name(str(game.get("event_id") or "")) or detail["format"]
         detail["notes"] = self.store.notes(game_id)
         detail["frame_index"] = self.store.frame_index(game_id)
         detail["cards"] = {str(card_id): card for card_id, card in self._cards_for_game(game).items()}
@@ -199,7 +210,7 @@ class CoachService:
 
     def frames(self, game_id: str, start: int = 0, limit: int = 25) -> dict:
         if self.store.game_summary(game_id) is None:
-            raise KeyError("jogo não encontrado")
+            raise KeyError("game not found")
         limit = max(1, min(int(limit), 100))
         frames = self.store.frames(game_id, max(0, int(start)), limit)
         return {"game_id": game_id, "start": start, "count": len(frames), "frames": frames}
@@ -208,7 +219,7 @@ class CoachService:
         """Turn-by-turn narrative built from the annotations, not from the board snapshots."""
         game = self.store.game_summary(game_id)
         if game is None:
-            raise KeyError("jogo não encontrado")
+            raise KeyError("game not found")
         events = self.store.events(game_id)
         cards = self.cards(sorted({event["card_id"] for event in events if event.get("card_id")}))
 
@@ -282,15 +293,15 @@ class CoachService:
         """
         game = self.store.game_summary(game_id)
         if game is None:
-            raise KeyError("jogo não encontrado")
+            raise KeyError("game not found")
         frame = self.store.frame(game_id, index)
         if frame is None:
-            raise ValueError("posição não encontrada")
+            raise ValueError("frame not found")
         seat = game.get("self_seat")
         deck_counts = {item["id"]: item["quantity"] for item in game.get("deck", {}).get("main", [])
                        if isinstance(item, dict) and isinstance(item.get("id"), int)}
         if not seat or not deck_counts:
-            return {"eligible": False, "reason": "Sem deck registrado ou assento identificado."}
+            return {"eligible": False, "reason": "No registered deck or identified seat."}
         seen: dict[int, int] = {}
         for zone in frame.get("zones", []):
             if zone.get("type") in ("Library", "Sideboard"):
@@ -324,7 +335,7 @@ class CoachService:
         """Everything the opponent showed, with no archetype guessed on top of it."""
         game = self.store.game_summary(game_id)
         if game is None:
-            raise KeyError("jogo não encontrado")
+            raise KeyError("game not found")
         seat = game.get("self_seat")
         # Read from what was visible on the board, not from the event stream: a permanent
         # already in play when the game state resynchronised produces no event and was
@@ -346,15 +357,15 @@ class CoachService:
         return {"game_id": game_id, "opponent_name": game.get("opponent_name"),
                 "cards": entries, "colours": dict(sorted(colours.items())),
                 "prior_games": prior,
-                "note": ("Lista parcial: são apenas as cartas que o adversário mostrou. "
-                         "Não equivale ao deck dele e não nomeia um arquétipo.")}
+                "note": ("Partial list: only the cards the opponent actually showed. "
+                         "It is not their deck and it names no archetype.")}
 
     # ------------------------------------------------------------------ deck analysis
 
     def deck_report(self, deck_id: str) -> dict:
         games = [game for game in self.store.games() if str(game.get("deck_id")) == deck_id]
         if not games:
-            raise KeyError("deck não observado")
+            raise KeyError("deck not observed")
         deck = games[-1].get("deck", {"main": [], "sideboard": []})
         main = deck.get("main", [])
         side = deck.get("sideboard", [])
@@ -418,8 +429,8 @@ class CoachService:
                          "interval": analysis.wilson_interval(wins, total)})
         return {"rows": rows, "sample": len(games),
                 "games_to_detect_five_points": analysis.games_needed(0.50, 0.05),
-                "note": ("Amostra pessoal. Um intervalo que cruza a taxa geral do deck não "
-                         "distingue a carta do acaso.")}
+                "note": ("Personal sample. An interval that straddles the deck's overall rate "
+                         "does not tell the card apart from chance.")}
 
     def compare_samples(self, first: dict, second: dict) -> dict:
         """Two win-rate samples side by side, with what it would take to tell them apart."""
@@ -435,11 +446,11 @@ class CoachService:
         baseline = min(max(baseline, 0.05), 0.90)
         return {"first": left, "second": right, "intervals_overlap": overlap,
                 "games_needed_for_five_points": analysis.games_needed(baseline, 0.05),
-                "verdict": ("As amostras não se separam: os intervalos se sobrepõem."
+                "verdict": ("The samples do not separate: the intervals overlap."
                             if overlap in (True, None) else
-                            "Os intervalos não se sobrepõem nesta amostra."),
-                "warning": ("Conferir o resultado a cada partida e parar quando agrada infla o "
-                            "falso positivo. Defina o tamanho da amostra antes de começar.")}
+                            "The intervals do not overlap in this sample."),
+                "warning": ("Checking after every game and stopping when it looks good inflates "
+                            "the false positive rate. Fix the sample size before you start.")}
 
     # ------------------------------------------------------------------ user material
 
@@ -449,11 +460,11 @@ class CoachService:
         frame_index = payload.get("frame_index")
         tags = payload.get("tags", [])
         if not isinstance(game_id, str) or not isinstance(body, str) or not body.strip() or len(body) > 4000:
-            raise ValueError("nota inválida")
+            raise ValueError("invalid note")
         if frame_index is not None and (not isinstance(frame_index, int) or frame_index < 0):
-            raise ValueError("posição da nota inválida")
+            raise ValueError("invalid note position")
         if not isinstance(tags, list) or any(not isinstance(tag, str) or len(tag) > 64 for tag in tags):
-            raise ValueError("etiquetas inválidas")
+            raise ValueError("invalid tags")
         return self.store.add_note(game_id, frame_index, body.strip(), tags)
 
     def notes(self) -> list[dict]:
@@ -462,13 +473,13 @@ class CoachService:
     def save_experiment(self, payload: dict) -> dict:
         deck_id, title, hypothesis, changes, status = (payload.get(key) for key in ("deck_id", "title", "hypothesis", "changes", "status"))
         if not all(isinstance(item, str) and item.strip() for item in (deck_id, title, hypothesis, status)) or len(title) > 200 or len(hypothesis) > 4000:
-            raise ValueError("experimento inválido")
+            raise ValueError("invalid experiment")
         if not isinstance(changes, (dict, list, str)) or isinstance(changes, str) and len(changes) > 4000:
-            raise ValueError("mudanças inválidas")
+            raise ValueError("invalid changes")
         if status not in {"planned", "active", "completed", "abandoned"}:
-            raise ValueError("estado do experimento inválido")
+            raise ValueError("estado do invalid experiment")
         if not any(game.get("deck_id") == deck_id for game in self.store.games()):
-            raise ValueError("deck não observado")
+            raise ValueError("deck not observed")
         return self.store.add_experiment(deck_id, title, hypothesis, changes, status)
 
     def experiments(self) -> list[dict]:
@@ -477,19 +488,19 @@ class CoachService:
     def bind_deck(self, payload: dict) -> dict:
         deck_id, deck_uid = payload.get("deck_id"), payload.get("deck_uid")
         if not isinstance(deck_id, str) or not isinstance(deck_uid, str) or not deck_id or not deck_uid:
-            raise ValueError("vínculo inválido")
+            raise ValueError("invalid binding")
         known = {deck["uid"]: deck for deck in self.store.named_decks()}
         if deck_uid not in known:
-            raise ValueError("deck nomeado não observado")
+            raise ValueError("named deck not observed")
         if not any(game.get("deck_id") == deck_id for game in self.store.games()):
-            raise ValueError("composição não observada")
+            raise ValueError("composition not observed")
         return self.store.bind_deck(deck_id, deck_uid, known[deck_uid].get("name") or deck_uid)
 
     # ------------------------------------------------------------------ capture
 
     def capture_status(self) -> dict:
         if self.watcher is None:
-            return {"running": False, "reason": "acompanhamento não iniciado"}
+            return {"running": False, "reason": "follower not started"}
         return self.watcher.status()
 
     def set_capture(self, running: bool) -> dict:
@@ -500,17 +511,151 @@ class CoachService:
             self.watcher = LogWatcher(self, self.log_path)
         return self.watcher.start() if running else self.watcher.stop()
 
+    # ------------------------------------------------------------------ card art
+
+    def art_status(self) -> dict:
+        return {**self.art.stats(), "enabled": bool(self.store.profile("art_enabled")),
+                "source": "scryfall"}
+
+    def set_art(self, enabled: bool) -> dict:
+        self.store.set_profile("art_enabled", bool(enabled))
+        return self.art_status()
+
+    def art_file(self, card_id: int):
+        path = self.art.path_for(card_id)
+        return path if path.is_file() else None
+
+    def fetch_art(self, card_ids: list[int]) -> dict:
+        """Download the missing art for these cards. Only card identifiers leave the machine."""
+        if not self.store.profile("art_enabled"):
+            raise ValueError("card art is switched off")
+        cards = self.cards(sorted({int(value) for value in card_ids if int(value) > 0}))
+        result = self.art.fetch(list(cards.values()))
+        return {**result, **self.art_status()}
+
+    def deck_art_ids(self, deck_id: str) -> list[int]:
+        games = [game for game in self.store.games() if str(game.get("deck_id")) == deck_id]
+        if not games:
+            raise KeyError("deck not observed")
+        deck = games[-1].get("deck", {})
+        return [item["id"] for section in ("main", "sideboard")
+                for item in deck.get(section, []) if isinstance(item, dict)]
+
+    # ------------------------------------------------------------------ deck lists
+
+    def export_deck(self, deck_id: str) -> dict:
+        games = [game for game in self.store.games() if str(game.get("deck_id")) == deck_id]
+        if not games:
+            raise KeyError("deck not observed")
+        deck = games[-1].get("deck", {"main": [], "sideboard": []})
+        ids = [item["id"] for section in ("main", "sideboard")
+               for item in deck.get(section, []) if isinstance(item, dict)]
+        exported = format_arena(deck, self.cards(sorted(set(ids))))
+        return {"deck_id": deck_id, "label": self._deck_label(deck_id), **exported}
+
+    def analyze_list(self, text: str) -> dict:
+        """Run the same deck analysis over a list pasted from Arena or from a site.
+
+        Nothing is stored: this answers what the list would look like without pretending
+        the games were played with it.
+        """
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("empty list")
+        if len(text) > 20000:
+            raise ValueError("list too long")
+        parsed = parse_arena(text, self.card_database_path)
+        main, side = parsed["deck"]["main"], parsed["deck"]["sideboard"]
+        if not main:
+            return {**parsed, "analysis": None,
+                    "note": "No main-deck card was recognised."}
+        cards = self.cards(sorted({item["id"] for item in main + side}))
+        entries = [{"card": cards.get(str(item["id"]), {}), "quantity": item["quantity"]}
+                   for item in main]
+        return {**parsed, "cards": cards,
+                "analysis": self._composition_report(entries, cards, side),
+                "note": "Standalone list: no game was played with it, so there is no sample."}
+
+    def _composition_report(self, entries: list[dict], cards: dict, sideboard: list[dict]) -> dict:
+        from .catalog import wildcard_cost
+
+        spells = [entry for entry in entries
+                  if entry["card"].get("resolved") and not entry["card"].get("is_land")]
+        spell_count = sum(entry["quantity"] for entry in spells)
+        average = (sum(entry["card"]["mana_value"] * entry["quantity"] for entry in spells) / spell_count
+                   if spell_count else None)
+        sources = analysis.colour_sources(entries)
+        full = entries + [{"card": cards.get(str(item["id"]), {}), "quantity": item["quantity"]}
+                          for item in sideboard]
+        return {
+            "curve": analysis.mana_curve(entries),
+            "average_mana_value": round(average, 2) if average is not None else None,
+            "lands": sources["total_lands"], "sources": sources["by_colour"],
+            "lands_recommended": analysis.lands_recommended(average) if average is not None else None,
+            "colour_requirements": analysis.colour_requirements(entries),
+            "flexible_costs": analysis.flexible_costs(entries),
+            "wildcards": wildcard_cost(full),
+            "unresolved": [entry["card"].get("id") for entry in entries
+                           if not entry["card"].get("resolved")],
+            "karsten_citation": analysis.KARSTEN_2022_CITATION,
+            "bo1_caveat": analysis.BO1_SMOOTHING_CAVEAT,
+        }
+
+    # ------------------------------------------------------------------ review by model
+
+    def coach_status(self) -> dict:
+        return {"package": coach.sdk_available(), "key": self.keys.has_key(),
+                "key_hint": self.keys.fingerprint(), "model": coach.MODEL,
+                "modes": sorted(coach.MODES),
+                "ready": coach.sdk_available() and self.keys.has_key(),
+                "install": "python -m pip install anthropic"}
+
+    def save_api_key(self, value: str) -> dict:
+        if not isinstance(value, str):
+            raise ValueError("chave invalida")
+        value = value.strip()
+        if value and not value.startswith("sk-"):
+            raise ValueError("a chave da Anthropic comeca com sk-")
+        self.keys.save(value)
+        return self.coach_status()
+
+    def coach_material(self, kind: str, game_id: str | None = None,
+                       index: int | None = None, deck_id: str | None = None) -> dict:
+        """Only numbers this app computed, plus the sanitised position. Nothing raw."""
+        if kind == "deck":
+            report = self.deck_report(str(deck_id))
+            return {key: report[key] for key in
+                    ("label", "games", "wins", "losses", "interval", "by_start", "curve",
+                     "average_mana_value", "lands", "sources", "lands_recommended",
+                     "colour_requirements", "flexible_costs", "wildcards", "unresolved",
+                     "karsten_citation", "bo1_caveat", "card_stats") if key in report}
+        context = self.decision_context(str(game_id), int(index))
+        if not context["eligible"]:
+            raise ValueError(context["text"])
+        material = {"posicao": context["context"]}
+        try:
+            material["grimorio"] = self.library_state(str(game_id), int(index))
+        except (KeyError, ValueError):
+            material["grimorio"] = {"eligible": False}
+        material["adversario"] = self.opponent_profile(str(game_id))
+        return material
+
+    def coach_review(self, mode: str, kind: str, **kwargs) -> dict:
+        return coach.review(self.keys.load(), mode, self.coach_material(kind, **kwargs))
+
+    def coach_estimate(self, mode: str, kind: str, **kwargs) -> dict:
+        return coach.estimate(self.keys.load(), mode, self.coach_material(kind, **kwargs))
+
     # ------------------------------------------------------------------ context export
 
     def decision_context(self, game_id: str, index: int) -> dict:
         game = self.store.game_summary(game_id)
         if game is None:
-            raise KeyError("jogo não encontrado")
+            raise KeyError("game not found")
         if not isinstance(game.get("self_seat"), int) or game["self_seat"] <= 0:
-            return {"eligible": False, "context": {}, "text": "Contexto indisponível sem identificação verificável do jogador."}
+            return {"eligible": False, "context": {}, "text": "No context without a verifiable identification of the player."}
         selected = self.store.frame(game_id, index)
         if selected is None or selected.get("quality") in {"degraded", "blocked"}:
-            return {"eligible": False, "context": {}, "text": "Contexto indisponível para este trecho."}
+            return {"eligible": False, "context": {}, "text": "No context for this stretch."}
         prior_reveals = self._prior_match_reveals(game)
         current = self._safe_frame(selected)
         card_ids = self._context_card_ids(game, current, prior_reveals)
@@ -523,7 +668,9 @@ class CoachService:
             "cards": {str(card_id): self._context_card(card) for card_id, card in self.cards(sorted(card_ids)).items()},
             "prior_match_reveals": prior_reveals, "review_mode": "manual",
         }
-        text = "Revise manualmente apenas o contexto sanitizado abaixo; não assuma resultado futuro ou informação não revelada.\n" + json.dumps(context, ensure_ascii=False, separators=(",", ":"))
+        text = ("Review only the sanitised context below; assume no future result and no "
+                "undisclosed information.\n"
+                + json.dumps(context, ensure_ascii=False, separators=(",", ":")))
         return {"eligible": True, "context": context, "text": text}
 
     def _context_card_ids(self, game: dict, frame: dict, prior_reveals: list[dict]) -> set[int]:
@@ -547,7 +694,7 @@ class CoachService:
     def _context_card(self, card: dict) -> dict:
         if card.get("resolved"):
             return {key: card.get(key) for key in ("id", "name", "name_en", "text", "mana_cost", "mana_value", "type_line", "colors", "is_land", "power", "toughness", "resolved", "set", "collector_number", "rarity", "rebalanced", "linked_faces")}
-        return {"id": card.get("id"), "resolved": False, "gap": "ID de carta não resolvido"}
+        return {"id": card.get("id"), "resolved": False, "gap": "unresolved card id"}
 
     def _safe_frame(self, frame: dict) -> dict:
         return {key: frame.get(key) for key in ("index", "state_id", "turn", "phase", "step", "active_player", "priority_player", "players", "zones", "action", "actions", "available_actions", "events", "quality", "warnings")}
