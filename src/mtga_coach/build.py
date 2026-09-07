@@ -43,10 +43,18 @@ COMMUNITY_NOTE = (
     "on this machine. Those are opinions with a name on them, and they are replaced by the "
     "measurement the moment 17Lands has one.")
 
+# What a limited deck wants regardless of which cards are in it. These are shape, not
+# quality: a deck with fifteen creatures and a curve beats a pile of twenty-three good
+# cards that all cost five, and none of it is a claim about any individual card.
+CREATURE_TARGET = 15
+CURVE_TARGET = {1: 2, 2: 6, 3: 5, 4: 4, 5: 3, 6: 1}
+
 STRUCTURAL_NOTE = (
-    "No published win rate covers this set yet, so the order below is read off the cards "
-    "themselves: removal, bodies, card draw, curve. It can tell a removal spell from a "
-    "lifegain spell. It cannot tell a bomb from a trap.")
+    "Nothing measures this set yet, and reading card text was tested against 17Lands on "
+    "2026-09-07: the twenty-three it picks are worth no more than twenty-three drawn at "
+    "random from the same pool. So these are chosen for shape instead — enough creatures, "
+    "a curve, and the colours the pool paid for. They are a legal, coherent deck. Which of "
+    "your cards are the good ones is not something this app can tell you here.")
 
 # Text patterns, most decisive first. The score is a rank, not a measurement.
 PATTERNS = (
@@ -191,22 +199,63 @@ def _fits(entry, pair):
     return not entry["colours"] or set(entry["colours"]) <= set(pair)
 
 
-def _pick_spells(entries, pair, wanted=SPELLS):
-    """The best `wanted` cards in a colour pair, with a ceiling on expensive ones."""
+def _pick_spells(entries, pair, wanted=SPELLS, by_shape=False):
+    """The `wanted` cards to play from a colour pair.
+
+    With a measurement or a signed grade behind the scores, the best ones are taken. Without
+    one, the scores do not mean anything — that was measured — so the deck is filled for
+    shape instead: creatures first up to a target, then the curve slots that are still empty,
+    then whatever is left. The result is a coherent deck that makes no claim about which of
+    the player's cards are good.
+    """
     eligible = [entry for entry in entries if not entry["is_land"] and _fits(entry, pair)]
-    eligible.sort(key=lambda entry: (-entry["score"], entry["name"]))
-    chosen, expensive = [], 0
-    overflow = []
-    for entry in eligible:
-        for _ in range(entry["quantity"]):
-            if len(chosen) >= wanted:
-                break
-            costly = isinstance(entry["mana_value"], int) and entry["mana_value"] >= EXPENSIVE_FROM
-            if costly and expensive >= MAX_EXPENSIVE:
-                overflow.append(entry)
-                continue
-            chosen.append(entry)
-            expensive += 1 if costly else 0
+    if not by_shape:
+        eligible.sort(key=lambda entry: (-entry["score"], entry["name"]))
+    else:
+        eligible.sort(key=lambda entry: (entry["mana_value"] if isinstance(entry["mana_value"], int)
+                                         else 99, entry["name"]))
+    chosen, expensive, overflow = [], 0, []
+    creatures = 0
+    curve = {}
+
+    def take(entry):
+        nonlocal expensive, creatures
+        chosen.append(entry)
+        if isinstance(entry["mana_value"], int):
+            curve[entry["mana_value"]] = curve.get(entry["mana_value"], 0) + 1
+            if entry["mana_value"] >= EXPENSIVE_FROM:
+                expensive += 1
+        if "Creature" in (entry["card"].get("type_codes") or []):
+            creatures += 1
+
+    def costly(entry):
+        return isinstance(entry["mana_value"], int) and entry["mana_value"] >= EXPENSIVE_FROM
+
+    pending = [entry for entry in eligible for _ in range(entry["quantity"])]
+    if by_shape:
+        # Two passes: fill the creature count and the curve slots, then everything else.
+        for wants_creature in (True, False):
+            for entry in list(pending):
+                if len(chosen) >= wanted:
+                    break
+                is_creature = "Creature" in (entry["card"].get("type_codes") or [])
+                if wants_creature and (not is_creature or creatures >= CREATURE_TARGET):
+                    continue
+                value = entry["mana_value"] if isinstance(entry["mana_value"], int) else 6
+                if curve.get(value, 0) >= CURVE_TARGET.get(min(value, 6), 1) and len(chosen) < wanted - 3:
+                    continue
+                if costly(entry) and expensive >= MAX_EXPENSIVE:
+                    overflow.append(entry)
+                    continue
+                take(entry)
+                pending.remove(entry)
+    for entry in pending:
+        if len(chosen) >= wanted:
+            break
+        if costly(entry) and expensive >= MAX_EXPENSIVE:
+            overflow.append(entry)
+            continue
+        take(entry)
     return chosen, overflow
 
 
@@ -263,6 +312,9 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
     are shown with their totals so the choice stays theirs.
     """
     entries, coverage = playables(pool_ids, cards, ratings, grades)
+    # Without a measurement or a grade the scores are noise, so the pair is chosen on how
+    # many playable cards it holds rather than on a total of meaningless numbers.
+    shape_only = not coverage["measured"] and not coverage["opinion"]
     pool_lands = [entry for entry in entries if entry["is_land"]]
     lands = size - round(size * (SPELLS / DECK_MINIMUMS["limited"]))
     spells_wanted = size - lands
@@ -270,13 +322,15 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
     for first in range(len(COLOURS)):
         for second in range(first + 1, len(COLOURS)):
             pair = COLOURS[first] + COLOURS[second]
-            chosen, _ = _pick_spells(entries, pair, spells_wanted)
+            chosen, _ = _pick_spells(entries, pair, spells_wanted, by_shape=shape_only)
             # A pair that cannot fill the deck is still worth showing: seeing that the
             # second-best lane was four cards short is what explains the first one.
             if len(chosen) < MIN_PLAYABLES:
                 continue
-            scored.append({"pair": pair, "total": round(sum(item["score"] for item in chosen), 1),
-                           "chosen": chosen, "short": max(0, spells_wanted - len(chosen))})
+            total = (len(chosen) if shape_only
+                     else round(sum(item["score"] for item in chosen), 1))
+            scored.append({"pair": pair, "total": total, "chosen": chosen,
+                           "short": max(0, spells_wanted - len(chosen))})
     if not scored:
         return {"pair": None, "spells": [], "coverage": coverage,
                 "reason": "No colour pair in this pool reaches enough playable cards.",
@@ -291,7 +345,7 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
     # The spells were chosen against the default count; a changed count changes how many.
     if size - lands != spells_wanted:
         spells_wanted = size - lands
-        best["chosen"], _ = _pick_spells(entries, best["pair"], spells_wanted)
+        best["chosen"], _ = _pick_spells(entries, best["pair"], spells_wanted, by_shape=shape_only)
     split = _land_split(best["chosen"], best["pair"], pool_lands, lands)
     deck_entries = _deck_entries(best["chosen"], split, cards)
     basis = ("17lands" if coverage["measured"] else
@@ -311,7 +365,8 @@ def suggest(pool_ids, cards, ratings=None, size=DECK_MINIMUMS["limited"], grades
         "mana": analysis.colour_requirements(deck_entries, deck_size=size),
         "alternatives": [{"pair": item["pair"], "total": item["total"], "short": item["short"]}
                          for item in scored[1:4]],
-        "short": best["short"], "coverage": coverage,
+        "short": best["short"], "coverage": coverage, "chosen_for": "shape" if shape_only else "score",
+        "creature_target": CREATURE_TARGET,
         "left_out": sorted(
             ({"card_id": entry["card_id"], "name": entry["name"], "score": entry["score"],
               "colours": entry["colours"]}

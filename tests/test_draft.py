@@ -201,14 +201,23 @@ class AdviceTest(unittest.TestCase):
         self.assertEqual([item["card_id"] for item in advice["unrated"]], [4])
         self.assertTrue(any("no published rate" in note for note in advice["notes"]))
 
-    def test_a_set_with_no_data_is_ranked_off_the_cards_instead_of_left_silent(self):
-        # A new set has no published rate for a fortnight. Saying nothing about the pack
-        # for two weeks is worse than reading the cards and saying that is what happened.
+    def test_a_set_with_no_data_gets_the_pack_but_never_a_named_pick(self):
+        """Measured on 2026-09-07: ranking by card text recovers 12% of the gap between
+        picking blind and picking the measured best, at a rank correlation of 0.084. So the
+        pack is shown, the colour fit is shown, and no card is called the pick."""
         advice = pick.advise([1, 2, 3, 4], [], {}, self.cards, pick_number=1)
         self.assertEqual(advice["basis"], "structure")
-        self.assertEqual(advice["unrated"], [])
-        self.assertIsNotNone(advice["pick"])
-        self.assertIn("cannot tell a bomb from a trap", advice["caveat"])
+        self.assertFalse(advice["names_a_pick"])
+        self.assertIsNone(advice["pick"])
+        self.assertEqual(advice["close_calls"], [])
+        self.assertEqual(len(advice["ranked"]), 4)
+        self.assertIn("no card here is called the pick", advice["caveat"])
+
+    def test_the_pack_without_data_is_ordered_by_cost_not_by_a_score(self):
+        # An order by score would read as a ranking however it is labelled.
+        advice = pick.advise([1, 2, 3, 4], [], {}, self.cards, pick_number=1)
+        values = [item["mana_value"] for item in advice["ranked"]]
+        self.assertEqual(values, sorted(values))
 
     def test_signed_grades_outrank_the_card_text_and_lose_to_a_measurement(self):
         grades = {cid: {"grade": 5.0} for cid in (1, 2, 3, 4)}

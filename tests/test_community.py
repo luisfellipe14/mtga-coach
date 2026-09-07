@@ -60,10 +60,18 @@ class PreferenceTest(unittest.TestCase):
         self.cards = {n: card(f"Card {n}") for n in range(1, 25)}
         self.pool = list(range(1, 25))
 
-    def test_without_anything_the_basis_is_the_card_text(self):
+    def test_without_anything_the_deck_is_built_for_shape_and_says_so(self):
+        """Card text was measured against 17Lands and picks a 23 worth no more than a
+        random 23 from the same pool, so the builder stops claiming quality here."""
         answer = build.suggest(self.pool, self.cards)
         self.assertEqual(answer["basis"], "structure")
-        self.assertIn("read off the cards themselves", answer["note"])
+        self.assertEqual(answer["chosen_for"], "shape")
+        self.assertIn("no more than twenty-three drawn at random", answer["note"])
+
+    def test_with_a_measurement_the_deck_is_chosen_on_the_numbers(self):
+        ratings = {n: {"gih_wr": 0.5 + n / 1000, "gih_games": 900} for n in self.pool}
+        answer = build.suggest(self.pool, self.cards, ratings=ratings)
+        self.assertEqual(answer["chosen_for"], "score")
 
     def test_grades_take_over_when_they_cover_the_pool(self):
         grades = {n: {"grade": 3.0} for n in self.pool}

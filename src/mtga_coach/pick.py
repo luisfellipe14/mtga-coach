@@ -27,6 +27,17 @@ OFF_COLOUR_PENALTY = 6.0
 PENALTY_BY_BASIS = {"17lands": OFF_COLOUR_PENALTY, "community": 3.0, "structure": 3.0}
 # What share of the pack a source has to cover before it is the one ranking the pack.
 COVERAGE = 0.6
+# Measured on 2026-09-07 against HOB, the only set 17Lands was serving: ranking a pack by
+# card text recovers 12% of the gap between picking blind and picking the measured best,
+# with a rank correlation of 0.084. It reads "removal" and "creature" correctly and that is
+# not quality. So no pick is named without a measurement or a signed grade behind it —
+# the full figures are in docs/analise/2026-09-07-backtest-do-heuristico.md.
+MEASURED_FAILURE = (
+    "Nothing measures this set yet, so no card here is called the pick. Reading the cards' "
+    "text was tested against 17Lands and recovers 12% of the gap between picking blind and "
+    "picking the measured best — an order built on it would not be better than your own "
+    "read. What is below is the pack with its costs, its types and how each card fits the "
+    "colours your pool is already paying for, which are facts rather than opinions.")
 # By this many picks a pool has told you what it is. Before it, the penalty scales in.
 COMMITMENT_PICKS = 12
 # Two cards inside this margin are a judgement call, not a ranking.
@@ -43,9 +54,7 @@ BASIS_CAVEAT = {
     "community": ("No published win rate covers this set yet, so the order comes from grades "
                   "written by hand and signed. They are opinions, and the measurement replaces "
                   "them the moment 17Lands has one."),
-    "structure": ("No published win rate and no grade covers this set yet, so the order is read "
-                  "off the cards themselves: removal, bodies, card draw, curve. It can tell a "
-                  "removal spell from a lifegain spell. It cannot tell a bomb from a trap."),
+    "structure": MEASURED_FAILURE,
 }
 
 
@@ -204,14 +213,23 @@ def advise(pack_ids, pool_ids, ratings, cards, pick_number=None, grades=None):
             "score": round(base + adjustment, 2), "fit": fit,
             "why": _why(card, row or {}, fit, chosen, commitment, pick_number, basis),
         })
-    rated.sort(key=lambda item: (-item["score"], item["name"]))
-    best = rated[0] if rated else None
+    if basis == "structure":
+        # Ordering by mana value is not a claim about anything: it groups the pack the way a
+        # drafter reads it, and refuses to imply that the top of the list is the pick.
+        rated.sort(key=lambda item: (item["mana_value"] if item["mana_value"] is not None else 99,
+                                     item["name"]))
+    else:
+        rated.sort(key=lambda item: (-item["score"], item["name"]))
+    names = basis != "structure"
+    best = rated[0] if rated and names else None
     close = [item["card_id"] for item in rated[1:]
-             if best and best["score"] - item["score"] <= CLOSE_MARGIN]
+             if best and best["score"] - item["score"] <= CLOSE_MARGIN] if names else []
     return {
         "pick": best["card_id"] if best else None,
         "pick_name": best["name"] if best else "",
-        "margin": round(best["score"] - rated[1]["score"], 2) if len(rated) > 1 else None,
+        "names_a_pick": names,
+        "margin": (round(best["score"] - rated[1]["score"], 2)
+                   if best and len(rated) > 1 else None),
         "close_calls": close, "ranked": rated, "unrated": unrated,
         "lane": chosen, "colour_weights": {k: round(v, 1) for k, v in weights.items()},
         "commitment": round(commitment, 2), "notes": _notes(pool_cards, unrated, commitment, chosen),
