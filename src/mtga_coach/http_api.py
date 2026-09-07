@@ -120,6 +120,8 @@ class _Handler(BaseHTTPRequestHandler):
                 str(query.get("track", ["constructed"])[0])))
         elif path == "/api/matchups":
             self._send(HTTPStatus.OK, service.matchups())
+        elif path == "/api/economy":
+            self._send(HTTPStatus.OK, service.economy())
         elif path == "/api/wallet":
             self._send(HTTPStatus.OK, service.wallet())
         elif path == "/api/capture":

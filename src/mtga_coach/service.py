@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, build, coach, pick, timeline
+from . import analysis, build, coach, economy, pick, timeline
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
 from .decklist import format_arena, parse_arena
@@ -24,6 +24,18 @@ MAX_LOG_BYTES = 512 * 1024 * 1024
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 READ_CHUNK = 4 * 1024 * 1024
 TERMINAL = {"win", "loss", "draw"}
+# Rates to read the prize table against when a player has no limited record of their own.
+REFERENCE_RATES = (0.40, 0.50, 0.55, 0.60)
+# Under this many completed limited games, a measured rate is noise.
+LIMITED_MIN_GAMES = 20
+
+
+def _is_limited(game: dict) -> bool:
+    """A draft or sealed game, told from the event the client recorded."""
+    event = str(game.get("event_id") or "") + str(game.get("format") or "")
+    return "Draft" in event or "Sealed" in event
+
+
 # Below this many nonland cards seen, the opponent's colours are a guess, not a reading.
 MATCHUP_MIN_CARDS = 3
 # Arena's ladder, lowest first. Mythic is a percentile rather than a tier, so it sits at
@@ -733,6 +745,43 @@ class CoachService:
                      f"reports fewer than it should. {thin} game(s) showed fewer than "
                      f"{minimum_seen} nonland cards and are left out rather than counted as "
                      "colourless."),
+        }
+
+    def economy(self) -> dict:
+        """What an entry returns at the rate you actually win limited games.
+
+        The rate has to be your limited rate, not your overall one: drafting and building
+        a sixty-card deck are different skills, and using the wrong one here is how a
+        player concludes that drafting pays when for them it does not.
+        """
+        games = [game for game in self.store.games()
+                 if game.get("result") in TERMINAL and _is_limited(game)]
+        wins = sum(1 for game in games if game["result"] == "win")
+        played = sum(1 for game in games if game["result"] in ("win", "loss"))
+        measured = analysis.wilson_interval(wins, played) if played else None
+        rate = measured["rate"] if measured else None
+        events = []
+        for name in economy.EVENTS:
+            row = {"event": name, "label": economy.EVENTS[name]["label"],
+                   "break_even": economy.break_even(name),
+                   "reference": [economy.verdict(name, value) for value in REFERENCE_RATES]}
+            if rate is not None:
+                row["yours"] = economy.verdict(name, rate)
+            events.append(row)
+        return {
+            "events": events, "reference_rates": list(REFERENCE_RATES),
+            "limited_games": played, "limited_wins": wins, "measured": measured,
+            "enough": played >= LIMITED_MIN_GAMES, "minimum": LIMITED_MIN_GAMES,
+            "pack_gems": economy.PACK_GEMS, "source": economy.SOURCE,
+            "unverified": economy.UNVERIFIED,
+            "note": ("Games are treated as independent at a constant win rate, which is an "
+                     "assumption and not a measurement: a run meets stronger opponents as it "
+                     "goes. The break-even rate is the honest part — it depends only on the "
+                     "published prize structure."
+                     + ("" if played >= LIMITED_MIN_GAMES else
+                        f" You have {played} completed limited game(s), which is not enough to "
+                        "estimate your rate; the reference rates are there to read the table "
+                        "with.")),
         }
 
     def wallet(self) -> dict:

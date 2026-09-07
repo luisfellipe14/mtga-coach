@@ -327,3 +327,13 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .rank-line { fill: none; stroke: var(--jade); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; }
 .matchup-body .rate-bar { margin-bottom: .5rem; }
+
+.economy-row { border-top: 1px solid rgba(255,255,255,.07); margin-top: .8rem; padding-top: .7rem; }
+.economy-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0; }
+.economy-cell { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); border-radius: 3px; min-width: 92px; padding: .45rem .6rem; }
+.economy-cell.good { border-color: rgba(45,160,110,.5); }
+.economy-cell.mine { border-color: var(--gold); }
+.economy-cell strong { display: block; font-size: 1.05rem; }
+.economy-cell span { color: var(--muted); font-size: .8rem; }
+.economy-cell small { color: var(--muted); display: block; font-size: .7rem; }
+.economy-cell .mine-label { color: var(--gold); letter-spacing: .08em; text-transform: uppercase; }

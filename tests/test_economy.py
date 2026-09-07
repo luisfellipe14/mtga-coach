@@ -1,0 +1,56 @@
+"""The prize arithmetic. The table is typed in; the maths on top of it is not."""
+
+import unittest
+
+from mtga_coach import economy
+
+
+class OutcomeTest(unittest.TestCase):
+    def test_the_distribution_is_a_distribution(self):
+        for event, table in economy.EVENTS.items():
+            with self.subTest(event=event):
+                outcomes = economy.outcome_probabilities(0.55, table["wins_cap"], table["losses_cap"])
+                self.assertAlmostEqual(sum(outcomes.values()), 1.0, places=9)
+
+    def test_every_run_stops_at_the_published_record(self):
+        table = economy.EVENTS["QuickDraft"]
+        for (wins, losses) in economy.outcome_probabilities(0.5, table["wins_cap"], table["losses_cap"]):
+            self.assertTrue(wins == table["wins_cap"] or losses == table["losses_cap"])
+
+    def test_a_player_who_never_wins_ends_at_zero_and_three(self):
+        outcomes = economy.outcome_probabilities(0.0, 7, 3)
+        self.assertEqual(outcomes, {(0, 3): 1.0})
+
+    def test_a_player_who_never_loses_ends_at_seven(self):
+        outcomes = economy.outcome_probabilities(1.0, 7, 3)
+        self.assertEqual(outcomes, {(7, 0): 1.0})
+
+
+class ReturnTest(unittest.TestCase):
+    def test_the_return_rises_with_the_win_rate(self):
+        values = [economy.expected_return("QuickDraft", rate)["expected_gems"]
+                  for rate in (0.3, 0.45, 0.6, 0.75)]
+        self.assertEqual(values, sorted(values))
+
+    def test_break_even_is_the_rate_where_the_entry_comes_back(self):
+        rate = economy.break_even("QuickDraft")
+        self.assertIsNotNone(rate)
+        below = economy.verdict("QuickDraft", rate - 0.02)["net_gems"]
+        above = economy.verdict("QuickDraft", rate + 0.02)["net_gems"]
+        self.assertLess(below, 0)
+        self.assertGreater(above, 0)
+
+    def test_an_unknown_event_computes_nothing(self):
+        answer = economy.verdict("SomeFutureQueue", 0.55)
+        self.assertFalse(answer["known"])
+        self.assertIn("nothing is computed", answer["note"])
+
+    def test_the_packs_that_come_with_the_entry_count_as_return(self):
+        # Leaving them out is the classic way to make every draft look like a loss.
+        answer = economy.verdict("PremierDraft", 0.5)
+        bare = answer["expected_gems"] + answer["expected_packs"] * economy.PACK_GEMS
+        self.assertGreater(answer["returned_gems_equivalent"], bare)
+
+
+if __name__ == "__main__":
+    unittest.main()

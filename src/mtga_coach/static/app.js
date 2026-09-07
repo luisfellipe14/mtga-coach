@@ -1158,6 +1158,12 @@ function renderStats() {
   modes.append(statRow('BO1', summary.by_mode?.BO1), statRow('BO3 (games)', summary.by_mode?.BO3));
   target.append(modes);
 
+  const cost = element('section', 'deck-section');
+  cost.append(element('h3', null, 'Does a draft pay for itself?'));
+  cost.append(element('div', 'economy-body', 'Reading…'));
+  target.append(cost);
+  loadEconomy();
+
   const economy = element('section', 'deck-section');
   economy.append(element('h3', null, 'Gems and gold'));
   economy.append(element('p', 'subtle', 'Measured from the balance the log restates while you play. Draft and sealed cost currency per entry, so this is the front where a new player bleeds without noticing.'));
@@ -1279,6 +1285,40 @@ function renderListAnalysis(target, payload) {
   const cost = report.wildcards?.cost ?? {};
   target.append(element('p', null, `Wildcards: ${cost.common ?? 0} common · ${cost.uncommon ?? 0} uncommon · ${cost.rare ?? 0} rare · ${cost.mythic ?? 0} mythic.`));
   target.append(element('small', null, payload.note));
+}
+
+// The break-even rate is the part that does not depend on an assumption: it falls out of
+// the published prize structure alone. Everything to the right of it does depend on one.
+async function loadEconomy() {
+  const holder = document.querySelector('.economy-body');
+  if (!holder) return;
+  try {
+    const data = await request('/api/economy');
+    holder.replaceChildren();
+    const yours = data.measured
+      ? `Your limited record: ${data.limited_wins}–${data.limited_games - data.limited_wins} · ${intervalText(data.measured)}`
+      : 'No completed limited game recorded yet.';
+    holder.append(element('p', data.enough ? null : 'gap', yours));
+    data.events.forEach((row) => {
+      const box = element('div', 'economy-row');
+      box.append(element('strong', null, `${row.label} — breaks even at ${row.break_even === null ? 'no rate' : `${(row.break_even * 100).toFixed(1)}%`}`));
+      const table = element('div', 'economy-grid');
+      const shown = row.yours ? [row.yours, ...row.reference] : row.reference;
+      shown.forEach((item, at) => {
+        const cell = element('div', `economy-cell${row.yours && at === 0 ? ' mine' : ''}${item.ratio >= 1 ? ' good' : ''}`);
+        cell.append(element('strong', null, `${(item.win_rate * 100).toFixed(0)}%`));
+        cell.append(element('span', null, `${item.ratio.toFixed(2)}×`));
+        cell.append(element('small', null, `${item.net_gems >= 0 ? '+' : ''}${Math.round(item.net_gems)} gems`));
+        if (row.yours && at === 0) cell.append(element('small', 'mine-label', 'yours'));
+        table.append(cell);
+      });
+      box.append(table);
+      box.append(element('small', null, `Entry ${row.reference[0].entry_gems} gems or ${row.reference[0].entry_gold} gold · ${row.reference[0].packs_included} pack(s) included · packs counted at ${data.pack_gems} gems`));
+      holder.append(box);
+    });
+    holder.append(element('p', 'gap', data.unverified));
+    holder.append(element('small', null, data.note));
+  } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
 }
 
 async function loadWallet() {
