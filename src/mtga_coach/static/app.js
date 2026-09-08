@@ -2093,10 +2093,12 @@ async function loadRank() {
 function rankChart(rank) {
   const chart = element('div', 'rank-chart');
   const points = rank.points;
-  const heights = points.map((point) => point.position);
   const rungs = rank.rungs ?? [];
-  const low = Math.min(...heights, ...rungs.map((r) => r.position));
-  const high = Math.max(...heights, ...rungs.map((r) => r.position));
+  const values = points.map((point) => point.position).concat(rungs.map((r) => r.position));
+  // Headroom on both sides: a line that touches the frame, or crosses the label of the
+  // rung above it, reads as a drawing error rather than as a rank.
+  const low = Math.min(...values) - 0.25;
+  const high = Math.max(...values) + 0.45;
   const span = Math.max(high - low, 0.5);
   // Time on the horizontal axis, not the reading number: an evening of twenty readings and
   // a quiet week are not the same width, and drawing them the same lies about the pace.
@@ -2104,7 +2106,7 @@ function rankChart(rank) {
   const first = times[0], last = times[times.length - 1];
   const width = Math.max(last - first, 1);
   const x = (at) => ((at - first) / width) * 100;
-  const y = (position) => 100 - ((position - low) / span) * 88 - 6;
+  const y = (position) => 100 - ((position - low) / span) * 100;
 
   const svgns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgns, 'svg');
@@ -2121,23 +2123,32 @@ function rankChart(rank) {
     svg.append(line);
   });
 
-  // A rank moves in steps and holds until the next match, so the line is drawn as steps.
-  // A diagonal between two readings would draw a climb that never happened.
-  const path = [];
+  // A rank holds between matches, so the shape is a series of flats. The risers between
+  // them are drawn faintly: at full weight thirty of them become a picket fence and the
+  // flats — which are the thing being read — disappear behind it.
+  const flats = [];
+  const risers = [];
   points.forEach((point, at) => {
-    const px = x(times[at]), py = y(point.position);
-    if (at === 0) path.push(`M ${px} ${py}`);
-    else path.push(`H ${px}`, `V ${py}`);
+    const from = x(times[at]);
+    const to = at + 1 < points.length ? x(times[at + 1]) : 100;
+    const height = y(point.position);
+    flats.push(`M ${from} ${height} H ${to}`);
+    if (at + 1 < points.length) {
+      risers.push(`M ${to} ${height} V ${y(points[at + 1].position)}`);
+    }
   });
-  path.push(`H 100`);
+  const riser = document.createElementNS(svgns, 'path');
+  riser.setAttribute('d', risers.join(' '));
+  riser.setAttribute('class', 'rank-riser');
+  svg.append(riser);
   const line = document.createElementNS(svgns, 'path');
-  line.setAttribute('d', path.join(' '));
+  line.setAttribute('d', flats.join(' '));
   line.setAttribute('class', 'rank-line');
   svg.append(line);
   chart.append(svg);
 
   const labels = element('div', 'rank-rungs');
-  rungs.slice().reverse().forEach((rung) => {
+  rungs.forEach((rung) => {
     const tag = element('span', 'rank-rung-label', rung.label);
     tag.style.top = `${y(rung.position)}%`;
     labels.append(tag);

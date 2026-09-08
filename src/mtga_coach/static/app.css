@@ -322,14 +322,21 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .deck-cut { margin: .8rem 0; }
 .deck-cut summary { color: var(--muted); cursor: pointer; font-size: .8rem; }
 
-.rank-chart { margin: .8rem 0; max-width: 46rem; position: relative; }
-.rank-chart svg { display: block; height: 170px; width: 100%; }
-.rank-line { fill: none; stroke: var(--jade); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
-.rank-rung { stroke: rgba(255,255,255,.10); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.rank-rungs { inset: 0 0 1.1rem 0; pointer-events: none; position: absolute; }
-.rank-rung-label { color: var(--muted); font-size: .66rem; left: 0; letter-spacing: .06em;
-  position: absolute; transform: translateY(-115%); text-transform: uppercase; }
-.rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; }
+.rank-chart { margin: .8rem 0 .4rem; max-width: 46rem; padding-left: 4.6rem; position: relative; }
+.rank-chart svg { display: block; height: 150px; width: 100%; }
+.rank-line { fill: none; stroke: var(--jade); stroke-linecap: round; stroke-width: 2.2;
+  vector-effect: non-scaling-stroke; }
+.rank-riser { fill: none; stroke: rgba(109,211,168,.30); stroke-width: 1;
+  vector-effect: non-scaling-stroke; }
+.rank-rung { stroke: rgba(255,255,255,.09); stroke-dasharray: 3 4; stroke-width: 1;
+  vector-effect: non-scaling-stroke; }
+/* The labels sit in the gutter to the left of the plot, so the line never runs through
+   them and the eye reads a ladder instead of text with a wire across it. */
+.rank-rungs { bottom: 1.1rem; left: 0; pointer-events: none; position: absolute; top: 0; width: 4.4rem; }
+.rank-rung-label { color: var(--muted); font-size: .64rem; letter-spacing: .06em; line-height: 1;
+  position: absolute; right: .5rem; text-align: right; text-transform: uppercase;
+  transform: translateY(-50%); white-space: nowrap; }
+.rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; padding-left: 4.6rem; }
 .matchup-body .rate-bar { margin-bottom: .5rem; }
 
 .economy-row { border-top: 1px solid rgba(255,255,255,.07); margin-top: .8rem; padding-top: .7rem; }
