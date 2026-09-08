@@ -194,6 +194,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK, service.timeline(game_id))
         elif action == "library":
             self._send(HTTPStatus.OK, service.library_state(game_id, int(query["index"][0])))
+        elif action == "moments":
+            self._send(HTTPStatus.OK, service.game_moments(game_id))
         elif action == "opponent":
             self._send(HTTPStatus.OK, service.opponent_profile(game_id))
         elif not action:

@@ -7,7 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable
 
-from . import analysis, build, coach, economy, pick, primer, signals, timeline
+from . import analysis, build, coach, economy, moments, pick, primer, signals, timeline
 from .community import CommunityGrades
 from .ingest import format_name, relabel_action
 from .art import CREDIT as ART_CREDIT, ArtCache
@@ -494,6 +494,33 @@ class CoachService:
                 "note": ("Read from the log as Arena writes it, so it lags the game by up to "
                          "the follower's polling interval. The library is exact for your own "
                          "deck and is never computed for the opponent.")}
+
+    def game_moments(self, game_id: str) -> dict:
+        """Turns worth looking at again in one game. Facts, never verdicts.
+
+        The chess-review shape people expect cannot be built here: classifying a move needs
+        an engine that evaluates the position, and Magic is Turing-complete, so no such
+        oracle exists. What the log does support is finding the turns where something
+        happened that a player rarely means — and handing back the position.
+        """
+        game = self.store.game_summary(game_id)
+        if game is None:
+            raise KeyError("game not found")
+        seat = game.get("self_seat")
+        if not seat:
+            return {"eligible": False, "reason": "The seat was never identified for this game."}
+        frames = self.store.frames(game_id)
+        if not frames:
+            return {"eligible": False, "reason": "No frame was stored for this game."}
+        frames = [self._relabel(frame) for frame in frames]
+        cards = self._cards_for_game(game)
+        found = moments.find(frames, int(seat), cards)
+        turn_count = len(moments.turns(frames, int(seat)))
+        return {"eligible": True, "game_id": game_id,
+                "deck_label": self._deck_label(str(game.get("deck_id", ""))),
+                "result": game.get("result"), "found": found,
+                "cards": {str(cid): card for cid, card in cards.items()},
+                **moments.summarise(found, turn_count)}
 
     def opponent_profile(self, game_id: str) -> dict:
         """Everything the opponent showed, with no archetype guessed on top of it."""
