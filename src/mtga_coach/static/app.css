@@ -421,3 +421,14 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .primer-mine { color: var(--gold); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; }
 .primer-pair p { font-size: .86rem; line-height: 1.5; margin: .2rem 0; max-width: 46rem; }
 .primer-pair small { color: var(--muted); display: block; margin-bottom: .3rem; }
+
+.rank-tracks { display: inline-flex; margin-bottom: .55rem; }
+.rank-band { fill: rgba(255,255,255,.025); }
+.rank-decks { bottom: 1.4rem; left: 4.6rem; pointer-events: none; position: absolute; right: 0; top: 0; }
+.rank-deck { position: absolute; transform: translate(-50%, -50%); }
+.rank-deck i { background: var(--gold); border: 2px solid #10231d; border-radius: 50%;
+  display: block; height: 9px; width: 9px; }
+.rank-deck em { color: var(--muted); font-size: .62rem; font-style: normal; left: 50%;
+  letter-spacing: .04em; position: absolute; top: 10px; transform: translateX(-50%);
+  white-space: nowrap; }
+.rank-deck em.above { top: auto; bottom: 12px; }

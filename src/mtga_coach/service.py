@@ -738,7 +738,21 @@ class CoachService:
                 "No rank reading stored yet. The log states the rank while the client runs, "
                 "so the curve begins at the first session this app followed.")}
         ceilings = steps_seen(points)
-        marked = [{**point, "position": rank_position(point, ceilings)} for point in points]
+        # Which deck was on the table at each reading. The client's match counter starts
+        # with the season and not with this app, so the two cannot be lined up by number;
+        # the game that started most recently before a reading is the one that moved it.
+        played = sorted((game for game in self.store.games()
+                         if game.get("started_at") and _is_limited(game) == (track == "limited")),
+                        key=lambda game: str(game["started_at"]))
+        marked = []
+        for point in points:
+            before = [game for game in played
+                      if str(game["started_at"]) <= point["recorded_at"]]
+            deck = before[-1] if before else None
+            marked.append({**point, "position": rank_position(point, ceilings),
+                           "deck_id": (deck or {}).get("deck_id"),
+                           "deck_label": self._deck_label(str((deck or {}).get("deck_id", "")))
+                           if deck else None})
         # The chart needs the ladder drawn behind the line, or a height means nothing. Only
         # the rungs the account actually visited are labelled: the app has no business
         # drawing Mythic under someone who has never been there.

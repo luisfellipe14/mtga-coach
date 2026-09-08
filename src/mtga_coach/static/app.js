@@ -58,7 +58,7 @@ const state = {
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
   signals: null, primer: null,
-  live: null, liveTimer: null, liveStamp: '', liveAll: false, grades: {}, gradeSet: '', handle: '',
+  live: null, liveTimer: null, liveStamp: '', liveAll: false, rankTrack: 'constructed', grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -2079,15 +2079,37 @@ async function loadRank() {
   const holder = document.querySelector('.rank-body');
   if (!holder) return;
   try {
-    const rank = await request('/api/rank');
+    const rank = await request(`/api/rank?track=${encodeURIComponent(state.rankTrack)}`);
     holder.replaceChildren();
-    if (!rank.points?.length) { holder.append(element('p', 'subtle', rank.note)); return; }
+    if (!rank.points?.length) {
+      holder.append(rankTracks());
+      holder.append(element('p', 'subtle', rank.note));
+      return;
+    }
+    holder.append(rankTracks());
     const head = element('p', null,
-      `${rank.first} \→ ${rank.last} \· ${rank.readings} readings \· ${rank.wins ?? 0} wins and ${rank.losses ?? 0} losses as the client counts them`);
+      `${rank.first} → ${rank.last} · ${rank.readings} readings · ${rank.wins ?? 0} wins and ${rank.losses ?? 0} losses as the client counts them`);
     holder.append(head);
     holder.append(rankChart(rank));
     holder.append(element('small', null, rank.note));
   } catch (error) { holder.replaceChildren(element('p', 'gap', error.message)); }
+}
+
+// Limited keeps its own ladder, and a draft never touches the constructed one — so a
+// climb has two stories and the screen has to let you pick which one you are reading.
+function rankTracks() {
+  const row = element('div', 'rank-tracks', '');
+  [['constructed', 'Constructed'], ['limited', 'Limited']].forEach(([key, label]) => {
+    const button = element('button', `mode${state.rankTrack === key ? ' active' : ''}`, label);
+    button.type = 'button';
+    button.addEventListener('click', () => {
+      if (state.rankTrack === key) return;
+      state.rankTrack = key;
+      loadRank();
+    });
+    row.append(button);
+  });
+  return row;
 }
 
 function rankChart(rank) {
@@ -2128,12 +2150,52 @@ function rankChart(rank) {
     svg.append(line);
   });
 
+  // Alternating columns ten matches wide: something for the eye to count against when it
+  // wants to know where in the run a dip happened.
+  for (let band = Math.ceil(firstMatch / 10) * 10; band < lastMatch; band += 20) {
+    const rect = document.createElementNS(svgns, 'rect');
+    rect.setAttribute('x', x(band));
+    rect.setAttribute('width', Math.max(x(Math.min(band + 10, lastMatch)) - x(band), 0));
+    rect.setAttribute('y', '0');
+    rect.setAttribute('height', '100');
+    rect.setAttribute('class', 'rank-band');
+    svg.append(rect);
+  }
+
   const line = document.createElementNS(svgns, 'polyline');
   line.setAttribute('points', points.map(([played, point]) =>
     `${x(played)},${y(point.position)}`).join(' '));
   line.setAttribute('class', 'rank-line');
   svg.append(line);
   chart.append(svg);
+
+  // A mark where the deck changed. The shape of a climb says little without knowing which
+  // list was doing the climbing, and the log knows: the game that ran before each reading.
+  const marks = element('div', 'rank-decks');
+  let previous = null;
+  let lastLabel = -100;
+  points.forEach(([played, point]) => {
+    const label = point.deck_label;
+    if (!label || label === previous) return;
+    previous = label;
+    const at = x(played);
+    const mark = element('span', 'rank-deck', '');
+    mark.style.left = `${at}%`;
+    mark.style.top = `${y(point.position)}%`;
+    mark.title = `${label} · from match ${played}`;
+    mark.append(element('i', null, ''));
+    // Two deck changes a few matches apart would print their names on top of each other.
+    // The dot is always drawn, because the change happened; the name waits for room, and
+    // the tooltip carries it either way.
+    if (at - lastLabel >= 16) {
+      const name = element('em', null, label);
+      if (y(point.position) > 60) name.classList.add('above');
+      mark.append(name);
+      lastLabel = at;
+    }
+    marks.append(mark);
+  });
+  chart.append(marks);
 
   const labels = element('div', 'rank-rungs');
   rungs.forEach((rung) => {
@@ -2166,7 +2228,7 @@ async function loadMatchups() {
       const head = element('div', 'rate-head');
       const name = element('strong', null, '');
       name.append(colourPips(row.colours === 'C' ? [] : row.colours.split('')));
-      name.append(document.createTextNode(` ${row.wins}\–${row.losses}${row.draws ? `\–${row.draws}` : ''}`));
+      name.append(document.createTextNode(` ${row.wins}–${row.losses}${row.draws ? `–${row.draws}` : ''}`));
       head.append(name, element('span', null, intervalText(row.interval)));
       line.append(head);
       if (row.interval) {
