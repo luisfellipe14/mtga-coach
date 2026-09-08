@@ -2092,20 +2092,25 @@ async function loadRank() {
 
 function rankChart(rank) {
   const chart = element('div', 'rank-chart');
-  const points = rank.points;
+  // Matches on the horizontal axis, not the clock. A rank only moves when a ranked match
+  // ends, so a time axis spends most of its width drawing the hours you were asleep or
+  // drafting — twelve of this account's twenty-four hours were one flat line. Counting
+  // matches instead makes every pixel a game that was played.
+  const seen = new Map();
+  rank.points.forEach((point) => {
+    const played = (point.wins ?? 0) + (point.losses ?? 0);
+    seen.set(played, point);
+  });
+  const points = [...seen.entries()].sort((a, b) => a[0] - b[0]);
   const rungs = rank.rungs ?? [];
-  const values = points.map((point) => point.position).concat(rungs.map((r) => r.position));
-  // Headroom on both sides: a line that touches the frame, or crosses the label of the
-  // rung above it, reads as a drawing error rather than as a rank.
-  const low = Math.min(...values) - 0.25;
-  const high = Math.max(...values) + 0.45;
+  const values = points.map(([, point]) => point.position).concat(rungs.map((r) => r.position));
+  const low = Math.min(...values) - 0.2;
+  const high = Math.max(...values) + 0.35;
   const span = Math.max(high - low, 0.5);
-  // Time on the horizontal axis, not the reading number: an evening of twenty readings and
-  // a quiet week are not the same width, and drawing them the same lies about the pace.
-  const times = points.map((point) => Date.parse(point.recorded_at) || 0);
-  const first = times[0], last = times[times.length - 1];
-  const width = Math.max(last - first, 1);
-  const x = (at) => ((at - first) / width) * 100;
+  const firstMatch = points[0][0];
+  const lastMatch = points[points.length - 1][0];
+  const reach = Math.max(lastMatch - firstMatch, 1);
+  const x = (played) => ((played - firstMatch) / reach) * 100;
   const y = (position) => 100 - ((position - low) / span) * 100;
 
   const svgns = 'http://www.w3.org/2000/svg';
@@ -2113,7 +2118,7 @@ function rankChart(rank) {
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `Rank from ${rank.first} to ${rank.last}`);
+  svg.setAttribute('aria-label', `Rank from ${rank.first} to ${rank.last} over ${reach} matches`);
 
   rungs.forEach((rung) => {
     const line = document.createElementNS(svgns, 'line');
@@ -2123,26 +2128,9 @@ function rankChart(rank) {
     svg.append(line);
   });
 
-  // A rank holds between matches, so the shape is a series of flats. The risers between
-  // them are drawn faintly: at full weight thirty of them become a picket fence and the
-  // flats — which are the thing being read — disappear behind it.
-  const flats = [];
-  const risers = [];
-  points.forEach((point, at) => {
-    const from = x(times[at]);
-    const to = at + 1 < points.length ? x(times[at + 1]) : 100;
-    const height = y(point.position);
-    flats.push(`M ${from} ${height} H ${to}`);
-    if (at + 1 < points.length) {
-      risers.push(`M ${to} ${height} V ${y(points[at + 1].position)}`);
-    }
-  });
-  const riser = document.createElementNS(svgns, 'path');
-  riser.setAttribute('d', risers.join(' '));
-  riser.setAttribute('class', 'rank-riser');
-  svg.append(riser);
-  const line = document.createElementNS(svgns, 'path');
-  line.setAttribute('d', flats.join(' '));
+  const line = document.createElementNS(svgns, 'polyline');
+  line.setAttribute('points', points.map(([played, point]) =>
+    `${x(played)},${y(point.position)}`).join(' '));
   line.setAttribute('class', 'rank-line');
   svg.append(line);
   chart.append(svg);
@@ -2156,8 +2144,9 @@ function rankChart(rank) {
   chart.append(labels);
 
   const scale = element('div', 'rank-scale');
-  const day = (value) => new Date(value).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
-  scale.append(element('span', null, day(first)), element('span', null, day(last)));
+  scale.append(element('span', null, `match ${firstMatch}`),
+               element('span', null, `${points.length} readings`),
+               element('span', null, `match ${lastMatch}`));
   chart.append(scale);
   return chart;
 }

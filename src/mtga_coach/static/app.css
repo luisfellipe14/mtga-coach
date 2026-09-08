@@ -323,10 +323,9 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .deck-cut summary { color: var(--muted); cursor: pointer; font-size: .8rem; }
 
 .rank-chart { margin: .8rem 0 .4rem; max-width: 46rem; padding-left: 4.6rem; position: relative; }
-.rank-chart svg { display: block; height: 150px; width: 100%; }
-.rank-line { fill: none; stroke: var(--jade); stroke-linecap: round; stroke-width: 2.2;
-  vector-effect: non-scaling-stroke; }
-.rank-riser { fill: none; stroke: rgba(109,211,168,.30); stroke-width: 1;
+.rank-chart svg { background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.07);
+  display: block; height: 160px; width: 100%; }
+.rank-line { fill: none; stroke: var(--jade); stroke-linejoin: round; stroke-width: 1.6;
   vector-effect: non-scaling-stroke; }
 .rank-rung { stroke: rgba(255,255,255,.09); stroke-dasharray: 3 4; stroke-width: 1;
   vector-effect: non-scaling-stroke; }
@@ -336,7 +335,7 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .rank-rung-label { color: var(--muted); font-size: .64rem; letter-spacing: .06em; line-height: 1;
   position: absolute; right: .5rem; text-align: right; text-transform: uppercase;
   transform: translateY(-50%); white-space: nowrap; }
-.rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; padding-left: 4.6rem; }
+.rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; padding: .3rem 0 0 4.6rem; }
 .matchup-body .rate-bar { margin-bottom: .5rem; }
 
 .economy-row { border-top: 1px solid rgba(255,255,255,.07); margin-top: .8rem; padding-top: .7rem; }
