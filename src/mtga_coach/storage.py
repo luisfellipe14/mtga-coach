@@ -172,7 +172,7 @@ class ReviewStore:
             CREATE TABLE IF NOT EXISTS rank_history (
                 recorded_at TEXT NOT NULL, track TEXT NOT NULL, class TEXT,
                 level INTEGER, step INTEGER, wins INTEGER, losses INTEGER,
-                PRIMARY KEY (recorded_at, track, class, level, step)
+                PRIMARY KEY (recorded_at, track)
             );
             CREATE TABLE IF NOT EXISTS drafts (
                 draft_id TEXT PRIMARY KEY, event_name TEXT NOT NULL DEFAULT '',
@@ -203,12 +203,40 @@ class ReviewStore:
         )
         # A table created by version 1 survives CREATE TABLE IF NOT EXISTS unchanged, so the
         # columns added since then have to be requested one by one.
+        self._rebuild_rank_history()
         self._ensure_column("imports", "imported_at", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("notes", "created_at", "TEXT NOT NULL DEFAULT ''")
         self._ensure_column("experiments", "created_at", "TEXT NOT NULL DEFAULT ''")
         self.connection.execute("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)",
                                 (str(SCHEMA_VERSION),))
         self.connection.commit()
+
+    def _rebuild_rank_history(self) -> None:
+        """Repair a key that could never deduplicate.
+
+        The first version keyed on (time, track, class, level, step). SQLite does not treat
+        two NULLs as equal in a primary key, and the client leaves `step` out of some rank
+        readings — so `INSERT OR IGNORE` never fired for those and every re-read of the log
+        appended the whole history again. One account reached 1,811 rows for 30 readings.
+        The key is now (time, track), which is what a reading actually is.
+        """
+        row = self.connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='rank_history'").fetchone()
+        if row is None or "PRIMARY KEY (recorded_at, track, class, level, step)" not in row[0]:
+            return
+        self.connection.executescript(
+            """
+            CREATE TABLE rank_history_fixed (
+                recorded_at TEXT NOT NULL, track TEXT NOT NULL, class TEXT,
+                level INTEGER, step INTEGER, wins INTEGER, losses INTEGER,
+                PRIMARY KEY (recorded_at, track)
+            );
+            INSERT OR IGNORE INTO rank_history_fixed
+                SELECT recorded_at, track, class, level, step, wins, losses FROM rank_history;
+            DROP TABLE rank_history;
+            ALTER TABLE rank_history_fixed RENAME TO rank_history;
+            """
+        )
 
     def _ensure_column(self, table: str, column: str, definition: str) -> None:
         existing = {row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}

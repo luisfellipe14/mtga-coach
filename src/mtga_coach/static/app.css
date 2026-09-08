@@ -322,9 +322,13 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .deck-cut { margin: .8rem 0; }
 .deck-cut summary { color: var(--muted); cursor: pointer; font-size: .8rem; }
 
-.rank-chart { margin: .8rem 0; }
-.rank-chart svg { display: block; height: 130px; width: 100%; }
-.rank-line { fill: none; stroke: var(--jade); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.rank-chart { margin: .8rem 0; max-width: 46rem; position: relative; }
+.rank-chart svg { display: block; height: 170px; width: 100%; }
+.rank-line { fill: none; stroke: var(--jade); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.rank-rung { stroke: rgba(255,255,255,.10); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rank-rungs { inset: 0 0 1.1rem 0; pointer-events: none; position: absolute; }
+.rank-rung-label { color: var(--muted); font-size: .66rem; left: 0; letter-spacing: .06em;
+  position: absolute; transform: translateY(-115%); text-transform: uppercase; }
 .rank-scale { color: var(--muted); display: flex; font-size: .72rem; justify-content: space-between; }
 .matchup-body .rate-bar { margin-bottom: .5rem; }
 

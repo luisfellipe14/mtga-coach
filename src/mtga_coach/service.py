@@ -739,13 +739,22 @@ class CoachService:
                 "so the curve begins at the first session this app followed.")}
         ceilings = steps_seen(points)
         marked = [{**point, "position": rank_position(point, ceilings)} for point in points]
+        # The chart needs the ladder drawn behind the line, or a height means nothing. Only
+        # the rungs the account actually visited are labelled: the app has no business
+        # drawing Mythic under someone who has never been there.
+        visited = sorted({(point["class"], point["level"]) for point in points
+                          if point.get("level") is not None},
+                         key=lambda item: RANK_TIERS.index(item[0]) * 10 + (4 - item[1]))
+        rungs = [{"label": f"{name} {level}",
+                  "position": rank_position({"class": name, "level": level}, ceilings)}
+                 for name, level in visited]
         first, last = marked[0], marked[-1]
         return {
             "track": track, "points": marked, "readings": len(marked),
             "from": first["recorded_at"], "to": last["recorded_at"],
             "first": _rank_label(first), "last": _rank_label(last),
             "moved": last["position"] - first["position"],
-            "tiers": RANK_TIERS, "steps_seen": ceilings,
+            "tiers": RANK_TIERS, "steps_seen": ceilings, "rungs": rungs,
             "wins": last.get("wins"), "losses": last.get("losses"),
             "note": ("Measured from rank readings in the log. The height inside a tier uses the "
                      "highest step seen in that tier, because the log never states how many "
