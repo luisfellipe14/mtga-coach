@@ -436,3 +436,11 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .live-panel.waiting { background: none; border-left-color: rgba(255,255,255,.14); }
 .live-panel.waiting .live-head strong { font-size: .92rem; font-weight: 400; }
 .live-panel.waiting p { color: var(--muted); font-size: .82rem; line-height: 1.5; margin: .4rem 0 .6rem; max-width: 44rem; }
+
+.moment { border-left: 2px solid rgba(255,255,255,.14); margin: .55rem 0; padding: .1rem .6rem; }
+.moment-unused_mana { border-left-color: var(--gold); }
+.moment-land_drop { border-left-color: #d87668; }
+.moment .text-button { font-size: .84rem; text-align: left; }
+.moment p { font-size: .82rem; line-height: 1.45; margin: .2rem 0; }
+.moment small { color: var(--muted); display: block; font-size: .72rem; line-height: 1.4; }
+.moment-note { color: var(--muted); display: block; margin-top: .8rem; }

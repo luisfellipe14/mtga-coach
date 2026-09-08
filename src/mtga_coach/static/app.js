@@ -57,7 +57,7 @@ const state = {
   experiments: [], frameCache: new Map(), sidebarTab: 'decision', deckReport: null, notes: [],
   coachAnswer: null, coachMode: 'explain', coachBusy: false, stepMode: 'all',
   draft: null, draftTimer: null, draftStamp: '', deck: null, deckOpen: false, review: null,
-  signals: null, primer: null,
+  signals: null, primer: null, momentsFor: null, moments: null,
   live: null, liveTimer: null, liveStamp: '', liveAll: false, rankTrack: 'constructed', grades: {}, gradeSet: '', handle: '',
 };
 const $ = (selector) => document.querySelector(selector);
@@ -565,8 +565,8 @@ function describeEvent(event) {
 // ---------------------------------------------------------------- sidebar
 
 const SIDEBAR_TABS = [
-  ['decision', 'Decision'], ['library', 'Library'], ['opponent', 'Opponent'],
-  ['timeline', 'Timeline'], ['reading', 'AI reading'],
+  ['decision', 'Decision'], ['moments', 'Moments'], ['library', 'Library'],
+  ['opponent', 'Opponent'], ['timeline', 'Timeline'], ['reading', 'AI reading'],
 ];
 
 function renderSidebar(frame) {
@@ -584,10 +584,68 @@ function renderSidebar(frame) {
   target.append(body);
   if (!frame) { body.append(element('p', 'subtle', 'Pick a frame that carries decision data.')); return; }
   if (state.sidebarTab === 'decision') renderDecisionTab(body, frame);
+  if (state.sidebarTab === 'moments') renderMomentsTab(body);
   if (state.sidebarTab === 'library') renderLibraryTab(body, frame);
   if (state.sidebarTab === 'opponent') renderOpponentTab(body);
   if (state.sidebarTab === 'timeline') renderTimelineTab(body);
   if (state.sidebarTab === 'reading') renderCoachTab(body, frame);
+}
+
+// The chess-review shape people ask for cannot be built: grading a play needs an engine
+// that evaluates the position, and Magic is Turing-complete, so none exists. What this tab
+// does instead is take you back to the turns where the log recorded something a player
+// rarely means to do. It never says whether it was wrong.
+const MOMENT_LABEL = {
+  land_drop: 'Land held',
+  unused_mana: 'Mana left over',
+  stranded: 'Left in hand',
+};
+
+function renderMomentsTab(target) {
+  target.append(element('p', 'eyebrow', 'TURNS TO LOOK AT AGAIN'));
+  if (state.momentsFor !== state.detail?.id) {
+    target.append(element('p', 'subtle', 'Reading the game…'));
+    loadMoments();
+    return;
+  }
+  const data = state.moments;
+  if (!data?.eligible) {
+    target.append(element('p', 'gap', data?.reason ?? 'This game cannot be read.'));
+    return;
+  }
+  if (!data.found?.length) {
+    target.append(element('p', null,
+      `Nothing to flag across your ${data.turns} turn(s): no land sat in hand, no turn ended with mana idle, and your hand was empty at the end.`));
+    target.append(element('small', null, data.note));
+    return;
+  }
+  target.append(element('p', null,
+    `${data.moments} moment(s) across your ${data.turns} turn(s).`));
+  data.found.forEach((moment) => {
+    const box = element('article', `moment moment-${moment.kind}`);
+    const open = element('button', 'text-button', `Turn ${moment.turn ?? '—'} · ${MOMENT_LABEL[moment.kind] ?? moment.kind}`);
+    open.type = 'button';
+    open.addEventListener('click', () => {
+      if (moment.frame !== null && moment.frame !== undefined) changeFrame(moment.frame);
+    });
+    box.append(open);
+    box.append(element('p', null, moment.detail));
+    box.append(element('small', null, moment.blind_spot));
+    target.append(box);
+  });
+  target.append(element('small', 'moment-note', data.note));
+}
+
+async function loadMoments() {
+  const id = state.detail?.id;
+  if (!id) return;
+  try {
+    state.moments = await request(`/api/games/${encodeURIComponent(id)}/moments`);
+  } catch (error) {
+    state.moments = { eligible: false, reason: error.message };
+  }
+  state.momentsFor = id;
+  if (state.sidebarTab === 'moments') renderReplay();
 }
 
 function actionText(action, sourceLine) {
