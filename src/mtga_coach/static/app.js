@@ -1383,9 +1383,31 @@ async function loadLive() {
 }
 
 function renderLive(panel, live) {
-  if (!live.live || !live.playing) { panel.hidden = true; return; }
   panel.hidden = false;
   panel.replaceChildren();
+  // A panel that simply is not there when it has nothing to show is indistinguishable from
+  // a panel that was never built. So it says what it is waiting for, and when the reason is
+  // that nobody turned the follower on, it offers the switch.
+  if (!live.live || !live.playing) {
+    panel.classList.add('waiting');
+    const head = element('div', 'live-head');
+    head.append(element('span', 'live-badge', live.live ? 'WAITING' : 'NOT FOLLOWING'));
+    head.append(element('strong', null, live.live
+      ? 'This fills in on the first turn of your next game.'
+      : 'Turn on following and this fills in while you play.'));
+    panel.append(head);
+    panel.append(element('p', 'subtle', live.live
+      ? 'What is left in your deck, and the chance of each card on the next draw. Read from the log as Arena writes it.'
+      : 'Arena wipes Player.log every time the client restarts, so the app has to be reading while you play. Nothing is sent anywhere.'));
+    if (!live.live) {
+      const start = element('button', 'button primary', 'Follow matches');
+      start.type = 'button';
+      start.addEventListener('click', toggleCapture);
+      panel.append(start);
+    }
+    return;
+  }
+  panel.classList.remove('waiting');
 
   const head = element('div', 'live-head');
   head.append(element('span', 'live-badge on', 'PLAYING'));

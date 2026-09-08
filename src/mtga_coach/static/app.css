@@ -432,3 +432,7 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
   letter-spacing: .04em; position: absolute; top: 10px; transform: translateX(-50%);
   white-space: nowrap; }
 .rank-deck em.above { top: auto; bottom: 12px; }
+
+.live-panel.waiting { background: none; border-left-color: rgba(255,255,255,.14); }
+.live-panel.waiting .live-head strong { font-size: .92rem; font-weight: 400; }
+.live-panel.waiting p { color: var(--muted); font-size: .82rem; line-height: 1.5; margin: .4rem 0 .6rem; max-width: 44rem; }
