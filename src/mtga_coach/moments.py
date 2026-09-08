@@ -23,6 +23,8 @@ revealed.
 
 from collections import Counter
 
+from .analysis import hard_pips
+
 # Instants and flash are meant to be held: flagging them would be teaching the wrong habit.
 SORCERY_SPEED = ("Creature", "Sorcery", "Artifact", "Enchantment", "Planeswalker", "Battle")
 FLASH = "flash"
@@ -45,18 +47,29 @@ def _own(frame, seat, kind):
     return []
 
 
-def _untapped_lands(frame, seat, cards):
+def _untapped_mana(frame, seat, cards):
+    """How much mana was up, and which colours it could actually make.
+
+    Counting only the amount was wrong, and a real game proved it: a hand of white cards
+    behind red lands is not idle mana, it is mana that does not fit. A colour a land cannot
+    produce is a colour the card could not have been cast with.
+    """
     battlefield = next((zone for zone in frame.get("zones", [])
                         if zone.get("type") == "Battlefield"), None)
     if battlefield is None:
-        return 0
+        return 0, Counter()
     total = 0
+    colours = Counter()
     for card in battlefield.get("objects") or []:
         if card.get("controller") != seat or card.get("tapped"):
             continue
-        if (cards.get(card.get("card_id")) or {}).get("is_land"):
-            total += 1
-    return total
+        entry = cards.get(card.get("card_id")) or {}
+        if not entry.get("is_land"):
+            continue
+        total += 1
+        for colour in entry.get("color_identity") or []:
+            colours[colour] += 1
+    return total, colours
 
 
 def _lands_in_play(frame, seat, cards):
@@ -69,16 +82,21 @@ def _lands_in_play(frame, seat, cards):
                and (cards.get(card.get("card_id")) or {}).get("is_land"))
 
 
-def _castable(card, mana):
-    """Could this have been cast with that much mana, ignoring colour.
+def _castable(card, mana, colours):
+    """Could this have been cast: enough mana, and of the colours the card demands.
 
-    Colour is left out on purpose: a shortfall of colour is the mana base's problem and the
-    deck screen already measures it. What this asks is the cruder question — was there
-    enough mana at all — because a card that could not be cast for any reason is not a
-    moment worth a player's attention.
+    The colour test counts how many untapped lands can make each colour, so a card wanting
+    two black pips needs two black sources standing. It is generous in one direction — a
+    land that makes two colours is counted for both, and it cannot be tapped twice — and
+    that is deliberate: the check should miss a moment rather than invent one.
     """
     value = card.get("mana_value")
-    return isinstance(value, int) and value <= mana and value > 0
+    if not isinstance(value, int) or value <= 0 or value > mana:
+        return False
+    for colour, pips in hard_pips(card).items():
+        if colours.get(colour, 0) < pips:
+            return False
+    return True
 
 
 def _sorcery_speed(card):
@@ -137,10 +155,10 @@ def find(frames, seat, cards, deck_counts=None):
             })
         previous_lands = max(previous_lands, lands_now)
 
-        mana = _untapped_lands(frame, seat, cards)
+        mana, colours = _untapped_mana(frame, seat, cards)
         creatures = _creatures_on_board(frame, cards)
         idle = [card for card in hand
-                if _sorcery_speed(card) and _castable(card, mana)
+                if _sorcery_speed(card) and _castable(card, mana, colours)
                 and not (_needs_a_creature(card) and not creatures)]
         if mana and idle:
             names = ", ".join(sorted({card.get("name", "?") for card in idle})[:3])
@@ -149,10 +167,11 @@ def find(frames, seat, cards, deck_counts=None):
                 "card_ids": [card.get("id") for card in idle if card.get("id")],
                 "detail": (f"Turn {turn} ended with {mana} untapped land(s) and {names} in hand, "
                            "which sorcery speed means could not wait."),
-                "blind_spot": ("Only untapped lands are counted, so a turn spent on an ability "
-                               "or a creature's mana reads as idle here. Instants and flash are "
-                               "never flagged, because holding those is the point, and neither is "
-                               "a card that needed a target the board did not have."),
+                "blind_spot": ("Only untapped lands are counted, so mana from a creature or an "
+                               "artifact is invisible here. Instants and flash are never flagged, "
+                               "because holding those is the point; nor is a card whose colours "
+                               "your lands could not make, or that needed a target the board did "
+                               "not have."),
             })
 
     if ends:

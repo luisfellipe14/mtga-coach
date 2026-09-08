@@ -101,3 +101,36 @@ def json_keys(value):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColourTest(unittest.TestCase):
+    """Red lands behind white cards is not idle mana. Found by him in a real game."""
+
+    def setUp(self):
+        self.cards = {
+            1: card(1, "Mountain", is_land=True, mana_value=0, type_codes=["Land"],
+                    colors=["R"], color_identity=["R"]),
+            2: card(2, "White Two Drop", mana_value=2, mana_tokens=["1", "W"],
+                    colors=["W"], color_identity=["W"]),
+            3: card(3, "Red Two Drop", mana_value=2, mana_tokens=["1", "R"],
+                    colors=["R"], color_identity=["R"]),
+            4: card(4, "Double Black", mana_value=2, mana_tokens=["B", "B"],
+                    colors=["B"], color_identity=["B"]),
+            5: card(5, "Swamp", is_land=True, mana_value=0, type_codes=["Land"],
+                    colors=["B"], color_identity=["B"]),
+        }
+
+    def played(self, hand, battlefield):
+        frames = [frame(0, 4, 1, hand=hand, battlefield=battlefield)]
+        return [item for item in moments.find(frames, 1, self.cards)
+                if item["kind"] == "unused_mana"]
+
+    def test_a_white_card_behind_red_lands_is_not_a_moment(self):
+        self.assertEqual(self.played([2], [(1, False), (1, False)]), [])
+
+    def test_the_same_mana_with_a_red_card_is_a_moment(self):
+        self.assertEqual(len(self.played([3], [(1, False), (1, False)])), 1)
+
+    def test_two_black_pips_need_two_black_sources(self):
+        self.assertEqual(self.played([4], [(5, False), (1, False)]), [])
+        self.assertEqual(len(self.played([4], [(5, False), (5, False)])), 1)

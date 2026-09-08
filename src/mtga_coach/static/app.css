@@ -444,3 +444,5 @@ code.shape { display: block; font-size: .72rem; margin: .2rem 0; opacity: .8; wo
 .moment p { font-size: .82rem; line-height: 1.45; margin: .2rem 0; }
 .moment small { color: var(--muted); display: block; font-size: .72rem; line-height: 1.4; }
 .moment-note { color: var(--muted); display: block; margin-top: .8rem; }
+
+.moment-ask { display: block; font-size: .76rem; margin-top: .35rem; }

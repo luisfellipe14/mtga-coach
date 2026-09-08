@@ -631,6 +631,19 @@ function renderMomentsTab(target) {
     box.append(open);
     box.append(element('p', null, moment.detail));
     box.append(element('small', null, moment.blind_spot));
+    // The rules found the position and checked the facts; whether it was actually a mistake
+    // is a judgement, and judgement is what the reading is for. It goes to the same place
+    // as any other reading — his own key, his own machine, only when he asks.
+    if (moment.frame !== null && moment.frame !== undefined) {
+      const ask = element('button', 'text-button moment-ask', 'Take this position to the reading');
+      ask.type = 'button';
+      ask.addEventListener('click', () => {
+        state.sidebarTab = 'reading';
+        state.coachMode = 'explain';
+        changeFrame(moment.frame);
+      });
+      box.append(ask);
+    }
     target.append(box);
   });
   target.append(element('small', 'moment-note', data.note));
